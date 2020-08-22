@@ -349,6 +349,7 @@ def main(ctx):
                                      prefix_obj['prefix']])
         # Print comment/header
         print(dnsmasq_dhcp)
+        print("")
 
         # Print dhcp-range
         ip_network = ipaddress.ip_network(prefix_obj['prefix'])
@@ -404,6 +405,7 @@ def main(ctx):
                                str(default_dnsname_ip_addr),
                                "  # Default DNS"
                               ]))
+        print("")
 
 
     sys.exit(0)
