@@ -245,7 +245,7 @@ def strip_query(ctx, query):
     return query
 
 ### 
-def query_netbox(ctx, query):
+def query_netbox(ctx, query, req_parameters=None):
     req_headers = {}
     req_headers['Authorization'] = " ".join(["Token", ctx['authkey']])
     req_headers['Content-Type'] = "application/json"
@@ -255,9 +255,8 @@ def query_netbox(ctx, query):
 
     get_req = requests.get('{}/api/{}'.format(ctx['netbox_base_url'], query_stripped),
                            timeout=3,
-                           headers=req_headers)
-    print(get_req)
-    print(get_req.status_code)
+                           headers=req_headers,
+                           params=req_parameters)
     get_req.raise_for_status()
 
     return get_req.json()
@@ -293,9 +292,9 @@ def sanity_checks(ctx):
 def main(ctx):
     q = query_netbox(ctx, "ipam/prefixes/")
 
-    dnsmasq_dhcp = ""
-
     for prefix_obj in q['results']:
+        dnsmasq_dhcp = ""
+
         pp = pprint.PrettyPrinter(indent=4)
         pp.pprint(prefix_obj)
 
@@ -331,6 +330,42 @@ def main(ctx):
                                      "Prefix: ",
                                      prefix_obj['prefix']])
         print(dnsmasq_dhcp)
+
+        # min = 100
+        # max = 199
+
+        ip_network = ipaddress.ip_network(prefix_obj['prefix'])
+        print(ip_network)
+        ip_network_min = print(ip_network.network_address + 100)
+        print(ip_network.network_address + 100)
+
+        print("dhcp-range=" + ",".join([prefix_obj['vrf']['name'],
+                                        str(ip_network.network_address + 100),
+                                        str(ip_network.network_address + 199),
+                                        str(ip_network.netmask),
+                                        "12h"
+                                       ]))
+
+        # Extract net_default_gateway from the VRF
+        parameters = {}
+        parameters['vrf_id'] = prefix_obj['vrf']['id']
+        parameters['tag']    = 'net_default_gateway'
+        q_ip_addrs = query_netbox(ctx, "ipam/ip-addresses/", parameters)
+
+        if q_ip_addrs['count'] == 0:
+            print("No default gateway available")
+        else:
+            default_gateway_ip_addr = \
+                ipaddress.ip_address(q_ip_addrs['results'][0]['address'].split("/")[0])
+            default_gateway_ip_network = \
+                ipaddress.ip_network(q_ip_addrs['results'][0]['address'], strict=False)
+
+            print("default_gateway_ip_addr", default_gateway_ip_addr)
+
+
+
+
+#net_default_gateway
 
 ####
 #### VLAN 204
