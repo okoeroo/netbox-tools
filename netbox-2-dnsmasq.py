@@ -37,10 +37,15 @@ def argparsing():
                         help="Netbox base URL.",
                         default=None,
                         type=str)
-    parser.add_argument("-lt", "--dhcp-default-lease-time",
-                        dest='dhcp_default_lease_time',
-                        help="DHCP Default Lease Time.",
+    parser.add_argument("-ltr", "--dhcp-default-lease-time-range",
+                        dest='dhcp_default_lease_time_range',
+                        help="DHCP Default Lease Time for a DHCP range.",
                         default="12h",
+                        type=str)
+    parser.add_argument("-lth", "--dhcp-default-lease-time-host",
+                        dest='dhcp_default_lease_time_host',
+                        help="DHCP Default Lease Time for a fixed DCHP host.",
+                        default="600m",
                         type=str)
     parser.add_argument("-min", "--dhcp-host-range-offset-min",
                         dest='dhcp_host_range_offset_min',
@@ -111,16 +116,17 @@ def argparsing():
     args = parser.parse_args()
 
     ctx = {}
-    ctx['verbose']                    = args.verbose
-    ctx['authkey']                    = args.authkey
-    ctx['dnsmasq_dhcp_output_file']   = args.dnsmasq_dhcp_output_file
-    ctx['netbox_base_url']            = args.netbox_base_url
-    ctx['dhcp_default_lease_time']    = args.dhcp_default_lease_time
-    ctx['dhcp_host_range_offset_min'] = args.dhcp_host_range_offset_min
-    ctx['dhcp_host_range_offset_max'] = args.dhcp_host_range_offset_max
-    ctx['dhcp_lease_file']            = args.dhcp_lease_file
-    ctx['dhcp_authoritive']           = args.dhcp_authoritive
-    ctx['dhcp_default_domain']        = args.dhcp_default_domain
+    ctx['verbose']                        = args.verbose
+    ctx['authkey']                        = args.authkey
+    ctx['dnsmasq_dhcp_output_file']       = args.dnsmasq_dhcp_output_file
+    ctx['netbox_base_url']                = args.netbox_base_url
+    ctx['dhcp_default_lease_time_range']  = args.dhcp_default_lease_time_range
+    ctx['dhcp_default_lease_time_host']   = args.dhcp_default_lease_time_host
+    ctx['dhcp_host_range_offset_min']     = args.dhcp_host_range_offset_min
+    ctx['dhcp_host_range_offset_max']     = args.dhcp_host_range_offset_max
+    ctx['dhcp_lease_file']                = args.dhcp_lease_file
+    ctx['dhcp_authoritive']               = args.dhcp_authoritive
+    ctx['dhcp_default_domain']            = args.dhcp_default_domain
 
     ctx['dhcp']               = args.dhcp
     ctx['zonefile']           = args.zonefile
@@ -271,6 +277,10 @@ def put_zonefile(ctx):
     f.write(output)
     f.close()
 
+
+def normalize_name(name):
+    return name.lower().replace(" ", "_").replace("-", "_").replace("\"", "").replace("\'", "")
+
 def strip_query(ctx, query):
     # Pattern is base_url/api/query, all double bits should be stripped 
 
@@ -389,7 +399,7 @@ def main(ctx):
                                         str(ip_network.network_address + \
                                             ctx['dhcp_host_range_offset_max']),
                                         str(ip_network.netmask),
-                                        ctx['dhcp_default_lease_time']
+                                        ctx['dhcp_default_lease_time_range']
                                        ]))
 
         # Extract net_default_gateway from the VRF
@@ -436,6 +446,74 @@ def main(ctx):
                                "  # Default DNS"
                               ]))
         print("")
+        
+        # dhcp-host=eth0,00:02:9b:e1:2a:19,IPTV_STB_Motorola_VIP2952,192.168.1.43,600m    # UUID:d5586a80-0048-49a7-b952-1c7190356e9f
+
+        # Query all IP addresses in the VRF. From each, fetch the associated interface and its MAC
+
+        # Extract all IP addresses in the VRF
+        parameters = {}
+        parameters['vrf_id'] = prefix_obj['vrf']['id']
+        q_ip_addrs = query_netbox(ctx, "ipam/ip-addresses/", parameters)
+
+        if q_ip_addrs['count'] == 0:
+            print("# No IP addresses in the VRF available.")
+        else:
+            for ip_addr_obj in q_ip_addrs['results']:
+                ip_addr = \
+                    ipaddress.ip_address(ip_addr_obj['address'].split("/")[0])
+
+                ip_net = \
+                    ipaddress.ip_network(ip_addr_obj['address'], strict=False)
+
+                # Get hostname
+                if ip_addr_obj['interface']['device'] is not None:
+                    host_name = \
+                        ip_addr_obj['interface']['device']['name']
+                elif ip_addr_obj['interface']['virtual_machine'] is not None:
+                    host_name = \
+                        ip_addr_obj['interface']['virtual_machine']['name']
+                else:
+                    host_name = "undefined"
+
+                # Get MAC from interface object
+                interface_obj = query_netbox(ctx, ip_addr_obj['interface']['url'])
+                mac_address = interface_obj['mac_address']
+
+
+                # Get interface name
+                interface_name =  ip_addr_obj['interface']['name']
+
+                try:
+                    if mac_address is None:
+                        print("No MAC address available.")
+                        continue
+
+                    if host_name is None:
+                        print("No MAC address available.")
+                        continue
+
+                    if ip_addr is None:
+                        print("No IPv4 Address available.")
+                        continue
+
+                    if interface_name is None:
+                        print("No interface name available.")
+                        continue
+
+                    # dhcp-host=eth0,a0:3e:6b:aa:6e:fc,Acer_Wit_Lieke,192.168.1.67,600m
+                    print("dhcp-host=" + ",".join([ prefix_obj['vrf']['name'],
+                                                    mac_address,
+                                                    normalize_name(host_name + "_" + interface_name),
+                                                    str(ip_addr),
+                                                    ctx['dhcp_default_lease_time_host'],
+                                                  ]))
+                except Exception as e:
+                    print(str(e))
+
+                    pp = pprint.PrettyPrinter(indent=4)
+                    pp.pprint(ip_addr_obj)
+                    sys.exit(1)
 
 
     sys.exit(0)
