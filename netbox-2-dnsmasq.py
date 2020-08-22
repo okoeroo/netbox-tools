@@ -73,10 +73,6 @@ def argparsing():
                         default="koeroo.local",
                         type=str)
 
-    parser.add_argument("-d", "--dhcp",                 dest='dhcp',
-                                                        help="DNSMasq input file with DHCP Host records.",
-                                                        default=None,
-                                                        type=str)
     parser.add_argument("-z", "--zonefile",             dest='zonefile',
                                                         help="Zonefile format to be consumed by Bind or PowerDNS.",
                                                         default=None,
@@ -87,30 +83,6 @@ def argparsing():
                                                         type=str)
     parser.add_argument("-f", "--zonefooter",           dest='zonefooter',
                                                         help="Zonefile footer template.",
-                                                        default=None,
-                                                        type=str)
-    parser.add_argument("-j", "--json",                 dest='json',
-                                                        help="Output JSON file.",
-                                                        action="store_true",
-                                                        default=False)
-    parser.add_argument("-ah", "--all-dhcp-hosts",      dest='all_dhcp_hosts',
-                                                        help="All DHCP Hosts.",
-                                                        action="store_true",
-                                                        default=False)
-    parser.add_argument("-lu", "--lookup-by-uuid",      dest='lookup_by_uuid',
-                                                        help="Lookup and output one host object, based on UUID value.",
-                                                        default=None,
-                                                        type=str)
-    parser.add_argument("-li", "--lookup-by-ipv4",      dest='lookup_by_ipv4',
-                                                        help="Lookup and output one host object, based on IPv4 address value.",
-                                                        default=None,
-                                                        type=str)
-    parser.add_argument("-lm", "--lookup-by-mac",       dest='lookup_by_mac',
-                                                        help="Lookup and output one host object, based on MAC address value.",
-                                                        default=None,
-                                                        type=str)
-    parser.add_argument("-lh", "--lookup-by-hostname",  dest='lookup_by_hostname',
-                                                        help="Lookup and output one host object, based on hostname value.",
                                                         default=None,
                                                         type=str)
     args = parser.parse_args()
@@ -128,16 +100,9 @@ def argparsing():
     ctx['dhcp_authoritive']               = args.dhcp_authoritive
     ctx['dhcp_default_domain']            = args.dhcp_default_domain
 
-    ctx['dhcp']               = args.dhcp
     ctx['zonefile']           = args.zonefile
     ctx['zoneheader']         = args.zoneheader
     ctx['zonefooter']         = args.zonefooter
-    ctx['json']               = args.json
-    ctx['all_dhcp_hosts']     = args.all_dhcp_hosts
-    ctx['lookup_by_uuid']     = args.lookup_by_uuid
-    ctx['lookup_by_ipv4']     = args.lookup_by_ipv4
-    ctx['lookup_by_mac']      = args.lookup_by_mac
-    ctx['lookup_by_hostname'] = args.lookup_by_hostname
     return ctx
 
 def get_uuid_value(value):
@@ -188,64 +153,6 @@ def is_ipaddress(to_check):
     except Exception as err:
         return False
 
-
-def fetch_dhcphosts(ctx):
-    ctx['dhcpraw'] = list(load_file_into_array(ctx['dhcp'], True))
-    ctx['dhcp-hosts'] = []
-
-    # Loop through all entries
-    for line in ctx['dhcpraw']:
-        s = line.strip()
-
-        # Skip all lines, except those with dhcp-host, post trimming/stripping
-        # whitespaces
-        if s.startswith('dhcp-host'):
-            line_params = s.split("=")[1]
-            elements = line_params.split(",")
-
-            dhcp_host_tuple = {}
-
-            #Detect element
-            # From the manual: -G, --dhcp-host=[<hwaddr>][,id:<client_id>|*][,set:<tag>][,<ipaddr>][,<hostname>][,<lease_time>][,ignore]
-            l_uuid = get_uuid_value(line_params)
-            if l_uuid is not None:
-                dhcp_host_tuple['uuid'] = l_uuid
-
-            for el in elements:
-                if el in psutil.net_if_addrs().keys():
-                    #print(el, "iface")
-                    dhcp_host_tuple['iface_scope'] = el
-                elif is_valid_macaddr802(el):
-                    #print(el, "mac")
-                    dhcp_host_tuple['mac'] = el
-                elif el.startswith('id:'):
-                    #print(el, "id")
-                    dhcp_host_tuple['id'] = el.split(':')[1]
-                elif el.startswith('set:'):
-                    #print(el, "set")
-                    dhcp_host_tuple['set'] = el.split(':')[1]
-                elif is_ipaddress(el):
-                    #print(el, "ipaddress")
-                    dhcp_host_tuple['ipaddress'] = el
-                elif is_lease_time(el):
-                    #print(el, "lease time")
-                    dhcp_host_tuple['lease_time'] = get_lease_time(el)
-                elif el == 'ignore':
-                    #print(el, "ignore")
-                    dhcp_host_tuple['ignore'] = True
-                else:
-                    #print(el, "hostname")
-                    # If all else fails
-                    dhcp_host_tuple['hostname'] = el
-
-            #print(s)
-            #print(line_params)
-            #print(elements)
-            #print(dhcp_host_tuple)
-
-            # print(dhcp_host_tuple)
-
-            ctx['dhcp-hosts'].append(dhcp_host_tuple)
 
 def put_zonefile(ctx):
 #    pp = pprint.PrettyPrinter(indent=4)
@@ -338,6 +245,7 @@ def write_to_ddo_fh(ctx, s):
     # Truncate file
     if s is None and ctx['dnsmasq_dhcp_output_file'] is not None:
         open(ctx['dnsmasq_dhcp_output_file'], 'w').close()
+        return
 
     # Print or write
     if ctx['dnsmasq_dhcp_output_file'] is None:
@@ -346,6 +254,113 @@ def write_to_ddo_fh(ctx, s):
         with open(ctx['dnsmasq_dhcp_output_file'], 'a') as the_file:
             the_file.write(s + os.linesep)
 
+
+# Default gateway from the VRF
+def get_net_default_gateway_from_vrf(ctx, vrf_id):
+
+    # Extract net_default_gateway from the VRF
+    parameters = {}
+    parameters['vrf_id'] = vrf_id
+    parameters['tag']    = 'net_default_gateway'
+    q_ip_addrs = query_netbox(ctx, "ipam/ip-addresses/", parameters)
+
+    if q_ip_addrs['count'] == 0:
+        write_to_ddo_fh(ctx, "# No default gateway available")
+        return None
+    else:
+
+        return q_ip_addrs['results'][0]
+
+
+# Grab DNS host based on the DNS configured on the default gateway
+# host of a VRF
+# Assuming this variable is filled
+def get_dns_host_from_ip_address(ctx, ip_addr_obj):
+
+    if ip_addr_obj['dns_name'] is not None and \
+        len(ip_addr_obj['dns_name']) > 0:
+
+        default_dnsname_ip_addr = \
+            ipaddress.ip_address(ip_addr_obj['dns_name'])
+        return default_dnsname_ip_addr
+    else:
+        return None
+
+# Query all IP addresses in the VRF. From each, fetch the associated interface and its MAC
+# Extract all IP addresses in the VRF
+def get_ip_addrs_in_vrf(ctx, vrf_id):
+    results = []
+
+    parameters = {}
+    parameters['vrf_id'] = vrf_id
+    q_ip_addrs = query_netbox(ctx, "ipam/ip-addresses/", parameters)
+
+    if q_ip_addrs['count'] == 0:
+        write_to_ddo_fh(ctx, "# No IP addresses in the VRF available.")
+    else:
+        for ip_addr_obj in q_ip_addrs['results']:
+            ip_addr = \
+                ipaddress.ip_address(ip_addr_obj['address'].split("/")[0])
+
+            ip_net = \
+                ipaddress.ip_network(ip_addr_obj['address'], strict=False)
+
+            # Get hostname
+            if ip_addr_obj['interface']['device'] is not None:
+                host_name = \
+                    ip_addr_obj['interface']['device']['name']
+            elif ip_addr_obj['interface']['virtual_machine'] is not None:
+                host_name = \
+                    ip_addr_obj['interface']['virtual_machine']['name']
+            else:
+                host_name = "undefined"
+
+            # Get MAC from interface object
+            interface_obj = query_netbox(ctx, ip_addr_obj['interface']['url'])
+            mac_address = interface_obj['mac_address']
+
+
+            # Get interface name
+            interface_name =  ip_addr_obj['interface']['name']
+
+            try:
+                if mac_address is None:
+                    write_to_ddo_fh(ctx, "## No MAC address available. " + str(ip_addr))
+                    continue
+
+                if host_name is None:
+                    write_to_ddo_fh(ctx, "## No hostname available.")
+                    continue
+
+                if ip_addr is None:
+                    write_to_ddo_fh(ctx, "## No IPv4 Address available.")
+                    continue
+
+                if interface_name is None:
+                    write_to_ddo_fh(ctx, "## No interface name available.")
+                    continue
+
+                results.append({'mac_address': mac_address,
+                                'host_name': host_name,
+                                'interface_name': interface_name,
+                                'ip_addr': ip_addr})
+            except Exception as e:
+                print(str(e))
+
+                pp = pprint.PrettyPrinter(indent=4)
+                pp.pprint(ip_addr_obj)
+                sys.exit(1)
+
+    return results
+
+#                # dhcp-host=eth0,a0:3e:6b:aa:6e:fc,Acer_Wit_Lieke,192.168.1.67,600m
+#                write_to_ddo_fh(ctx, "dhcp-host=" + ",".join([ prefix_obj['vrf']['name'],
+#                                                mac_address,
+#                                                normalize_name(host_name + "_" + interface_name),
+#                                                str(ip_addr),
+#                                                ctx['dhcp_default_lease_time_host'],
+#                                              ]))
+    
 
 # This function will create a DNSMasq formatted DHCP config file from Netbox
 def netbox_to_dnsmasq_dhcp_config(ctx):
@@ -410,195 +425,60 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
                                         ctx['dhcp_default_lease_time_range']
                                        ]))
 
-        # Extract net_default_gateway from the VRF
-        parameters = {}
-        parameters['vrf_id'] = prefix_obj['vrf']['id']
-        parameters['tag']    = 'net_default_gateway'
-        q_ip_addrs = query_netbox(ctx, "ipam/ip-addresses/", parameters)
-
-        if q_ip_addrs['count'] == 0:
-            write_to_ddo_fh(ctx, "# No default gateway available")
-        else:
+###########
+        default_gateway_ip_addr_obj = get_net_default_gateway_from_vrf(ctx, prefix_obj['vrf']['id'])
+        if default_gateway_ip_addr_obj is not None:
             default_gateway_ip_addr = \
-                ipaddress.ip_address(q_ip_addrs['results'][0]['address'].split("/")[0])
-            default_gateway_ip_network = \
-                ipaddress.ip_network(q_ip_addrs['results'][0]['address'], strict=False)
+                ipaddress.ip_address(default_gateway_ip_addr_obj['address'].split("/")[0])
 
-            write_to_ddo_fh(ctx, "".join(["dhcp-option=",
-                           prefix_obj['vrf']['name'],
-                           ",",
-                           "3", # Default gateway
-                           ",",
-                           str(default_gateway_ip_addr),
-                           "  # Default Gateway"
-                          ]))
-
-            # Grab DNS host based on the DNS configured on the default gateway
-            # host of a VRF
-            # Assuming this variable is filled
-            if q_ip_addrs['results'][0]['dns_name'] is not None and \
-                len(q_ip_addrs['results'][0]['dns_name']) > 0:
-
-                default_dnsname_ip_addr = \
-                    ipaddress.ip_address(q_ip_addrs['results'][0]['dns_name'])
-
+            if default_gateway_ip_addr is not None:
                 write_to_ddo_fh(ctx, "".join(["dhcp-option=",
                                prefix_obj['vrf']['name'],
                                ",",
-                               "6", # Default DNS
+                               "3", # Default gateway
                                ",",
-                               str(default_dnsname_ip_addr),
-                               "  # Default DNS"
+                               str(default_gateway_ip_addr),
+                               "  # Default Gateway"
                               ]))
+
+                default_dnsname_ip_addr = get_dns_host_from_ip_address(ctx, \
+                    default_gateway_ip_addr_obj)
+
+                if default_dnsname_ip_addr is not None:
+                    write_to_ddo_fh(ctx, "".join(["dhcp-option=",
+                                   prefix_obj['vrf']['name'],
+                                   ",",
+                                   "6", # Default DNS
+                                   ",",
+                                   str(default_dnsname_ip_addr),
+                                   "  # Default DNS"
+                                  ]))
+
         write_to_ddo_fh(ctx, "")
+
 
         # Query all IP addresses in the VRF. From each, fetch the associated interface and its MAC
         # Extract all IP addresses in the VRF
-        parameters = {}
-        parameters['vrf_id'] = prefix_obj['vrf']['id']
-        q_ip_addrs = query_netbox(ctx, "ipam/ip-addresses/", parameters)
+        ip_addrs_in_vrf = get_ip_addrs_in_vrf(ctx, prefix_obj['vrf']['id'])
 
-        if q_ip_addrs['count'] == 0:
-            write_to_ddo_fh(ctx, "# No IP addresses in the VRF available.")
-        else:
-            for ip_addr_obj in q_ip_addrs['results']:
-                ip_addr = \
-                    ipaddress.ip_address(ip_addr_obj['address'].split("/")[0])
+        for tupple in ip_addrs_in_vrf:
 
-                ip_net = \
-                    ipaddress.ip_network(ip_addr_obj['address'], strict=False)
+            # dhcp-host=eth0,a0:3e:6b:aa:6e:fc,Acer_Wit_Lieke,192.168.1.67,600m
+            write_to_ddo_fh(ctx, "dhcp-host=" + ",".join([ prefix_obj['vrf']['name'],
+                                            tupple['mac_address'],
+                                            normalize_name(tupple['host_name'] + "_" + \
+                                                tupple['interface_name']),
+                                            str(tupple['ip_addr']),
+                                            ctx['dhcp_default_lease_time_host'],
+                                          ]))
 
-                # Get hostname
-                if ip_addr_obj['interface']['device'] is not None:
-                    host_name = \
-                        ip_addr_obj['interface']['device']['name']
-                elif ip_addr_obj['interface']['virtual_machine'] is not None:
-                    host_name = \
-                        ip_addr_obj['interface']['virtual_machine']['name']
-                else:
-                    host_name = "undefined"
+        write_to_ddo_fh(ctx, "")
 
-                # Get MAC from interface object
-                interface_obj = query_netbox(ctx, ip_addr_obj['interface']['url'])
-                mac_address = interface_obj['mac_address']
-
-
-                # Get interface name
-                interface_name =  ip_addr_obj['interface']['name']
-
-                try:
-                    if mac_address is None:
-                        write_to_ddo_fh(ctx, "## No MAC address available. " + str(ip_addr))
-                        continue
-
-                    if host_name is None:
-                        write_to_ddo_fh(ctx, "## No hostname available.")
-                        continue
-
-                    if ip_addr is None:
-                        write_to_ddo_fh(ctx, "## No IPv4 Address available.")
-                        continue
-
-                    if interface_name is None:
-                        write_to_ddo_fh(ctx, "## No interface name available.")
-                        continue
-
-                    # dhcp-host=eth0,a0:3e:6b:aa:6e:fc,Acer_Wit_Lieke,192.168.1.67,600m
-                    write_to_ddo_fh(ctx, "dhcp-host=" + ",".join([ prefix_obj['vrf']['name'],
-                                                    mac_address,
-                                                    normalize_name(host_name + "_" + interface_name),
-                                                    str(ip_addr),
-                                                    ctx['dhcp_default_lease_time_host'],
-                                                  ]))
-                except Exception as e:
-                    print(str(e))
-
-                    pp = pprint.PrettyPrinter(indent=4)
-                    pp.pprint(ip_addr_obj)
-                    sys.exit(1)
-
-
-    sys.exit(0)
-
-    if ctx['dhcp'] is None:
-        print("No DHCP input file set")
-        return
-
-    # Fetch DHCP Hosts and throws them into ctx['dhcp-hosts']
-    fetch_dhcphosts(ctx)
-
-#    pp = pprint.PrettyPrinter(indent=4)
-#    pp.pprint(ctx)
-
-    if  'dhcp' in ctx and ctx['dhcp'] is not None and \
-        'zonefile' in ctx and ctx['zonefile'] is not None and \
-        'zoneheader' in ctx and ctx['zoneheader'] is not None and \
-        'zonefooter' in ctx and ctx['zonefooter'] is not None:
-        # Put a new zonefile out
-        put_zonefile(ctx)
-
-    if 'json' in ctx and ctx['json']:
-        y = json.dumps(ctx, indent=4)
-        print(y)
-
-    if 'all_dhcp_hosts' in ctx and ctx['all_dhcp_hosts']:
-        y = json.dumps(ctx['dhcp-hosts'], indent=4)
-        print(y)
-
-    if 'lookup_by_uuid' in ctx and ctx['lookup_by_uuid'] is not None:
-        fail = True
-        for host_obj in ctx['dhcp-hosts']:
-            if 'uuid' in host_obj and \
-                    host_obj['uuid'] == ctx['lookup_by_uuid']:
-                y = json.dumps(host_obj, indent=4)
-                print(y)
-                fail = False
-                break
-        if fail:
-            sys.exit(1)
-
-    if 'lookup_by_ipv4' in ctx and ctx['lookup_by_ipv4'] is not None:
-        fail = True
-        for host_obj in ctx['dhcp-hosts']:
-            if 'ipaddress' in host_obj and \
-                    host_obj['ipaddress'] == ctx['lookup_by_ipv4']:
-                y = json.dumps(host_obj, indent=4)
-                print(y)
-                fail = False
-                break
-        if fail:
-            sys.exit(1)
-
-    if 'lookup_by_mac' in ctx and ctx['lookup_by_mac'] is not None:
-        fail = True
-        for host_obj in ctx['dhcp-hosts']:
-            if 'mac' in host_obj and \
-                    host_obj['mac'] == ctx['lookup_by_mac']:
-                y = json.dumps(host_obj, indent=4)
-                print(y)
-                fail = False
-                break
-        if fail:
-            sys.exit(1)
-
-    if 'lookup_by_hostname' in ctx and ctx['lookup_by_hostname'] is not None:
-        fail = True
-        for host_obj in ctx['dhcp-hosts']:
-            if 'hostname' in host_obj and \
-                    host_obj['hostname'].lower() == ctx['lookup_by_hostname'].lower():
-                y = json.dumps(host_obj, indent=4)
-                print(y)
-                fail = False
-                break
-        if fail:
-            sys.exit(1)
 
 ### Main
 def main(ctx):
-    if ctx['dnsmasq_dhcp_output_file'] is not None:
-        f = open(ctx['dnsmasq_dhcp_output_file'], "w")
-        f.write('### Netbox to DNSMasq\n')
-        ctx['dnsmasq_dhcp_output_file_handle'] = f
+    # Truncate and open file
+    write_to_ddo_fh(ctx, None)
 
     netbox_to_dnsmasq_dhcp_config(ctx)
 
