@@ -37,6 +37,21 @@ def argparsing():
                         help="Netbox base URL.",
                         default=None,
                         type=str)
+    parser.add_argument("-lt", "--dhcp-default-lease-time",
+                        dest='dhcp_default_lease_time',
+                        help="DHCP Default Lease Time.",
+                        default="12h",
+                        type=str)
+    parser.add_argument("-min", "--dhcp-host-range-offset-min",
+                        dest='dhcp_host_range_offset_min',
+                        help="DHCP Host range offset minimum.",
+                        default=100,
+                        type=int)
+    parser.add_argument("-max", "--dhcp-host-range-offset-max",
+                        dest='dhcp_host_range_offset_max',
+                        help="DHCP Host range offset maximum.",
+                        default=199,
+                        type=int)
 
 
     parser.add_argument("-d", "--dhcp",                 dest='dhcp',
@@ -86,6 +101,9 @@ def argparsing():
     ctx['authkey']                    = args.authkey
     ctx['dnsmasq_dhcp_output_file']   = args.dnsmasq_dhcp_output_file
     ctx['netbox_base_url']            = args.netbox_base_url
+    ctx['dhcp_default_lease_time']    = args.dhcp_default_lease_time
+    ctx['dhcp_host_range_offset_min'] = args.dhcp_host_range_offset_min
+    ctx['dhcp_host_range_offset_max'] = args.dhcp_host_range_offset_max
 
     ctx['dhcp']               = args.dhcp
     ctx['zonefile']           = args.zonefile
@@ -295,8 +313,8 @@ def main(ctx):
     for prefix_obj in q['results']:
         dnsmasq_dhcp = ""
 
-        pp = pprint.PrettyPrinter(indent=4)
-        pp.pprint(prefix_obj)
+#        pp = pprint.PrettyPrinter(indent=4)
+#        pp.pprint(prefix_obj)
 
         # Skip non-IPv4
         if prefix_obj['family']['value'] != 4:
@@ -306,7 +324,7 @@ def main(ctx):
         if prefix_obj['site']['slug'] != 'home':
             continue
 
-        dnsmasq_dhcp = "".join([dnsmasq_dhcp, "\n###"])
+        # Generate VRF header
         if prefix_obj['site'] is not None:
             dnsmasq_dhcp = " ".join([dnsmasq_dhcp, "\n###", 
                                      "Site:   ", 
@@ -329,21 +347,18 @@ def main(ctx):
             dnsmasq_dhcp = " ".join([dnsmasq_dhcp, "\n###",
                                      "Prefix: ",
                                      prefix_obj['prefix']])
+        # Print comment/header
         print(dnsmasq_dhcp)
 
-        # min = 100
-        # max = 199
-
+        # Print dhcp-range
         ip_network = ipaddress.ip_network(prefix_obj['prefix'])
-        print(ip_network)
-        ip_network_min = print(ip_network.network_address + 100)
-        print(ip_network.network_address + 100)
-
         print("dhcp-range=" + ",".join([prefix_obj['vrf']['name'],
-                                        str(ip_network.network_address + 100),
-                                        str(ip_network.network_address + 199),
+                                        str(ip_network.network_address + \
+                                            ctx['dhcp_host_range_offset_min']),
+                                        str(ip_network.network_address + \
+                                            ctx['dhcp_host_range_offset_max']),
                                         str(ip_network.netmask),
-                                        "12h"
+                                        ctx['dhcp_default_lease_time']
                                        ]))
 
         # Extract net_default_gateway from the VRF
@@ -353,26 +368,42 @@ def main(ctx):
         q_ip_addrs = query_netbox(ctx, "ipam/ip-addresses/", parameters)
 
         if q_ip_addrs['count'] == 0:
-            print("No default gateway available")
+            print("# No default gateway available")
         else:
+#            pp = pprint.PrettyPrinter(indent=4)
+#            pp.pprint(q_ip_addrs)
+
             default_gateway_ip_addr = \
                 ipaddress.ip_address(q_ip_addrs['results'][0]['address'].split("/")[0])
             default_gateway_ip_network = \
                 ipaddress.ip_network(q_ip_addrs['results'][0]['address'], strict=False)
 
-            print("default_gateway_ip_addr", default_gateway_ip_addr)
+            print("".join(["dhcp-option=",
+                           prefix_obj['vrf']['name'],
+                           ",",
+                           "3", # Default gateway
+                           ",",
+                           str(default_gateway_ip_addr),
+                           "  # Default Gateway"
+                          ]))
 
+            # Grab DNS host based on the DNS configured on the default gateway
+            # host of a VRF
+            # Assuming this variable is filled
+            if q_ip_addrs['results'][0]['dns_name'] is not None and \
+                len(q_ip_addrs['results'][0]['dns_name']) > 0:
 
+                default_dnsname_ip_addr = \
+                    ipaddress.ip_address(q_ip_addrs['results'][0]['dns_name'])
 
-
-#net_default_gateway
-
-####
-#### VLAN 204
-####
-#dhcp-range=eth0.204,192.168.204.100,192.168.204.199,255.255.255.0,12h
-#dhcp-option=eth0.204,3,192.168.204.1 # Default gateway
-#dhcp-option=eth0.204,6,192.168.1.1   # Default DNS
+                print("".join(["dhcp-option=",
+                               prefix_obj['vrf']['name'],
+                               ",",
+                               "6", # Default DNS
+                               ",",
+                               str(default_dnsname_ip_addr),
+                               "  # Default DNS"
+                              ]))
 
 
     sys.exit(0)
