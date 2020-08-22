@@ -52,7 +52,21 @@ def argparsing():
                         help="DHCP Host range offset maximum.",
                         default=199,
                         type=int)
-
+    parser.add_argument("-lf", "--dhcp-lease-file",
+                        dest='dhcp_lease_file',
+                        help="DHCP Lease file.",
+                        default="/var/cache/dnsmasq/dnsmasq-dhcp.leasefile",
+                        type=str)
+    parser.add_argument("-da", "--dhcp-authoritive",
+                        dest='dhcp_authoritive',
+                        help="Set DHCP Authoritive flag",
+                        action="store_true",
+                        default=True)
+    parser.add_argument("-ddd", "--dhcp-default-domain",
+                        dest='dhcp_default_domain',
+                        help="DHCP Default Domain.",
+                        default="koeroo.local",
+                        type=str)
 
     parser.add_argument("-d", "--dhcp",                 dest='dhcp',
                                                         help="DNSMasq input file with DHCP Host records.",
@@ -104,6 +118,9 @@ def argparsing():
     ctx['dhcp_default_lease_time']    = args.dhcp_default_lease_time
     ctx['dhcp_host_range_offset_min'] = args.dhcp_host_range_offset_min
     ctx['dhcp_host_range_offset_max'] = args.dhcp_host_range_offset_max
+    ctx['dhcp_lease_file']            = args.dhcp_lease_file
+    ctx['dhcp_authoritive']           = args.dhcp_authoritive
+    ctx['dhcp_default_domain']        = args.dhcp_default_domain
 
     ctx['dhcp']               = args.dhcp
     ctx['zonefile']           = args.zonefile
@@ -308,6 +325,19 @@ def sanity_checks(ctx):
 
 ### Main
 def main(ctx):
+
+    # Generic settings
+    print("dhcp-leasefile=" + \
+        ctx['dhcp_lease_file'])
+
+    if ctx['dhcp_authoritive']:
+        print("dhcp-authoritative")
+
+    print("domain=" + \
+        ctx['dhcp_default_domain'])
+
+
+    # Query for prefixes and ranges
     q = query_netbox(ctx, "ipam/prefixes/")
 
     for prefix_obj in q['results']:
