@@ -333,18 +333,29 @@ def sanity_checks(ctx):
         print()
     return True
 
-### Main
-def main(ctx):
 
+def write_to_ddo_fh(ctx, s):
+    # Truncate file
+    if s is None and ctx['dnsmasq_dhcp_output_file'] is not None:
+        open(ctx['dnsmasq_dhcp_output_file'], 'w').close()
+
+    # Print or write
+    if ctx['dnsmasq_dhcp_output_file'] is None:
+        print(s)
+    else:
+        with open(ctx['dnsmasq_dhcp_output_file'], 'a') as the_file:
+            the_file.write(s + os.linesep)
+
+
+# This function will create a DNSMasq formatted DHCP config file from Netbox
+def netbox_to_dnsmasq_dhcp_config(ctx):
     # Generic settings
-    print("dhcp-leasefile=" + \
-        ctx['dhcp_lease_file'])
+    write_to_ddo_fh(ctx, "dhcp-leasefile=" + ctx['dhcp_lease_file'])
 
     if ctx['dhcp_authoritive']:
-        print("dhcp-authoritative")
+        write_to_ddo_fh(ctx, "dhcp-authoritative")
 
-    print("domain=" + \
-        ctx['dhcp_default_domain'])
+    write_to_ddo_fh(ctx, "domain=" + ctx['dhcp_default_domain'])
 
 
     # Query for prefixes and ranges
@@ -352,9 +363,6 @@ def main(ctx):
 
     for prefix_obj in q['results']:
         dnsmasq_dhcp = ""
-
-#        pp = pprint.PrettyPrinter(indent=4)
-#        pp.pprint(prefix_obj)
 
         # Skip non-IPv4
         if prefix_obj['family']['value'] != 4:
@@ -388,12 +396,12 @@ def main(ctx):
                                      "Prefix: ",
                                      prefix_obj['prefix']])
         # Print comment/header
-        print(dnsmasq_dhcp)
-        print("")
+        write_to_ddo_fh(ctx, dnsmasq_dhcp)
+        write_to_ddo_fh(ctx, "")
 
         # Print dhcp-range
         ip_network = ipaddress.ip_network(prefix_obj['prefix'])
-        print("dhcp-range=" + ",".join([prefix_obj['vrf']['name'],
+        write_to_ddo_fh(ctx, "dhcp-range=" + ",".join([prefix_obj['vrf']['name'],
                                         str(ip_network.network_address + \
                                             ctx['dhcp_host_range_offset_min']),
                                         str(ip_network.network_address + \
@@ -409,17 +417,14 @@ def main(ctx):
         q_ip_addrs = query_netbox(ctx, "ipam/ip-addresses/", parameters)
 
         if q_ip_addrs['count'] == 0:
-            print("# No default gateway available")
+            write_to_ddo_fh(ctx, "# No default gateway available")
         else:
-#            pp = pprint.PrettyPrinter(indent=4)
-#            pp.pprint(q_ip_addrs)
-
             default_gateway_ip_addr = \
                 ipaddress.ip_address(q_ip_addrs['results'][0]['address'].split("/")[0])
             default_gateway_ip_network = \
                 ipaddress.ip_network(q_ip_addrs['results'][0]['address'], strict=False)
 
-            print("".join(["dhcp-option=",
+            write_to_ddo_fh(ctx, "".join(["dhcp-option=",
                            prefix_obj['vrf']['name'],
                            ",",
                            "3", # Default gateway
@@ -437,7 +442,7 @@ def main(ctx):
                 default_dnsname_ip_addr = \
                     ipaddress.ip_address(q_ip_addrs['results'][0]['dns_name'])
 
-                print("".join(["dhcp-option=",
+                write_to_ddo_fh(ctx, "".join(["dhcp-option=",
                                prefix_obj['vrf']['name'],
                                ",",
                                "6", # Default DNS
@@ -445,19 +450,16 @@ def main(ctx):
                                str(default_dnsname_ip_addr),
                                "  # Default DNS"
                               ]))
-        print("")
-        
-        # dhcp-host=eth0,00:02:9b:e1:2a:19,IPTV_STB_Motorola_VIP2952,192.168.1.43,600m    # UUID:d5586a80-0048-49a7-b952-1c7190356e9f
+        write_to_ddo_fh(ctx, "")
 
         # Query all IP addresses in the VRF. From each, fetch the associated interface and its MAC
-
         # Extract all IP addresses in the VRF
         parameters = {}
         parameters['vrf_id'] = prefix_obj['vrf']['id']
         q_ip_addrs = query_netbox(ctx, "ipam/ip-addresses/", parameters)
 
         if q_ip_addrs['count'] == 0:
-            print("# No IP addresses in the VRF available.")
+            write_to_ddo_fh(ctx, "# No IP addresses in the VRF available.")
         else:
             for ip_addr_obj in q_ip_addrs['results']:
                 ip_addr = \
@@ -486,23 +488,23 @@ def main(ctx):
 
                 try:
                     if mac_address is None:
-                        print("No MAC address available.")
+                        write_to_ddo_fh(ctx, "## No MAC address available. " + str(ip_addr))
                         continue
 
                     if host_name is None:
-                        print("No MAC address available.")
+                        write_to_ddo_fh(ctx, "## No hostname available.")
                         continue
 
                     if ip_addr is None:
-                        print("No IPv4 Address available.")
+                        write_to_ddo_fh(ctx, "## No IPv4 Address available.")
                         continue
 
                     if interface_name is None:
-                        print("No interface name available.")
+                        write_to_ddo_fh(ctx, "## No interface name available.")
                         continue
 
                     # dhcp-host=eth0,a0:3e:6b:aa:6e:fc,Acer_Wit_Lieke,192.168.1.67,600m
-                    print("dhcp-host=" + ",".join([ prefix_obj['vrf']['name'],
+                    write_to_ddo_fh(ctx, "dhcp-host=" + ",".join([ prefix_obj['vrf']['name'],
                                                     mac_address,
                                                     normalize_name(host_name + "_" + interface_name),
                                                     str(ip_addr),
@@ -590,6 +592,15 @@ def main(ctx):
                 break
         if fail:
             sys.exit(1)
+
+### Main
+def main(ctx):
+    if ctx['dnsmasq_dhcp_output_file'] is not None:
+        f = open(ctx['dnsmasq_dhcp_output_file'], "w")
+        f.write('### Netbox to DNSMasq\n')
+        ctx['dnsmasq_dhcp_output_file_handle'] = f
+
+    netbox_to_dnsmasq_dhcp_config(ctx)
 
 ### Start up
 if __name__ == "__main__":
