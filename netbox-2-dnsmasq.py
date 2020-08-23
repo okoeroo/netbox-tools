@@ -12,6 +12,12 @@ import ipaddress
 import json
 import requests
 import json
+import localzone
+import dns
+import dns.zone
+import dns.name
+import dns.rdtypes
+
 
 
 def argparsing():
@@ -73,10 +79,12 @@ def argparsing():
                         default="koeroo.local",
                         type=str)
 
-    parser.add_argument("-z", "--zonefile",             dest='zonefile',
-                                                        help="Zonefile format to be consumed by Bind or PowerDNS.",
-                                                        default=None,
-                                                        type=str)
+    parser.add_argument("-z", "--zonefile",
+                        dest='zonefile',
+                        help="Zonefile format to be consumed by Bind or PowerDNS.",
+                        default=None,
+                        type=str)
+
     parser.add_argument("-e", "--zoneheader",           dest='zoneheader',
                                                         help="Zonefile header template.",
                                                         default=None,
@@ -475,12 +483,301 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
         write_to_ddo_fh(ctx, "")
 
 
+def add_rr_to_zone(ctx, zone, rr_obj):
+    if 'name' not in rr_obj:
+        raise "rr_obj missing name"
+
+    if 'type' not in rr_obj:
+        raise "rr_obj missing type"
+
+    if 'ttl' not in rr_obj:
+        rr_obj['ttl'] = 86400
+
+    rdclass = dns.rdataclass._by_text.get('IN')
+
+    # A
+    if rr_obj['type'] == 'A': 
+        if 'name' not in rr_obj or 'type' not in rr_obj or 'data' not in rr_obj:
+            raise "rr_obj missing elements for A record"
+
+        rdtype = dns.rdatatype._by_text.get(rr_obj['type'])
+        rdataset = zone.find_rdataset(rr_obj['name'], rdtype=rdtype, create=True)
+        rdata = dns.rdata.from_text(rdclass, rdtype, rr_obj['data'])
+        rdataset.add(rdata, ttl=rr_obj['ttl'])
+        return
+
+    # SOA
+    if rr_obj['type'] == 'SOA':
+        if 'name' not in rr_obj or 'type' not in rr_obj or \
+            'mname' not in rr_obj or 'rname' not in rr_obj:
+            raise "rr_obj missing elements for SOA record"
+
+        rdtype = dns.rdatatype._by_text.get(rr_obj['type'])
+        rdataset = zone.find_rdataset(rr_obj['name'], rdtype=rdtype, create=True)
+        rdata = dns.rdtypes.ANY.SOA.SOA(rdclass, rdtype,
+                    mname = dns.name.Name(rr_obj['mname'].split('.')),
+                    rname = dns.name.Name(rr_obj['rname'].split('.')),
+                    serial = rr_obj['serial'],
+                    refresh = rr_obj['refresh'],
+                    retry = rr_obj['retry'],
+                    expire = rr_obj['expire'],
+                    minimum = rr_obj['minimum']
+        )
+        rdataset.add(rdata, ttl=rr_obj['ttl'])
+        return
+
+    # NS
+    if rr_obj['type'] == 'NS':
+        rdtype = dns.rdatatype._by_text.get(rr_obj['type'])
+        rdataset = zone.find_rdataset(rr_obj['name'], rdtype=rdtype, create=True)
+
+        if rr_obj['data'][-1:] != '.':
+             rr_obj['data'] = rr_obj['data'] + '.'
+
+        rdata = dns.rdata.from_text(dns.rdataclass.IN, dns.rdatatype.NS,
+                                 rr_obj['data'])
+
+        rdataset.add(rdata, ttl=rr_obj['ttl'])
+
+def powerdns_recursor_zoneing(ctx):
+    zone = dns.zone.Zone('koeroo.local.')
+
+    rr_obj = {}
+    rr_obj['type']    = 'SOA'
+    rr_obj['name']    = 'koeroo.local.'
+    rr_obj['mname']   = 'ns.koeroo.local.'
+    rr_obj['rname']   = 'hostmaster.koeroo.local'
+    rr_obj['serial']  = 7
+    rr_obj['refresh'] = 86400
+    rr_obj['retry']   = 7200
+    rr_obj['expire']  = 3600000
+    rr_obj['minimum'] = 1800
+
+    add_rr_to_zone(ctx, zone, rr_obj)
+
+    rr_obj = {}
+    rr_obj['type'] = 'A'
+    rr_obj['name'] = 'www'
+    rr_obj['data'] = '192.168.10.30'
+
+    add_rr_to_zone(ctx, zone, rr_obj)
+
+    rr_obj = {}
+    rr_obj['type'] = 'NS'
+    rr_obj['name'] = '@'
+    rr_obj['data'] = 'ns.koeroo.local'
+
+    add_rr_to_zone(ctx, zone, rr_obj)
+
+    f = open('/tmp/test1', 'w')
+    zone.to_file(f)
+    f.close()
+    return
+
+#
+#def generate_zone_file(origin):
+#    """Generates a zone file.
+#     
+#    Accepts the zone origin as string (no trailing dot).
+#      
+#    Returns the contents of a zone file that contains all the resource records
+#    associated with the domain with the provided origin.
+#     
+#    """
+#    Domain = get_model('powerdns_manager', 'Domain')
+#    Record = get_model('powerdns_manager', 'Record')
+#     
+#    the_domain = Domain.objects.get(name__exact=origin)
+#    the_rrs = Record.objects.filter(domain=the_domain).order_by('-type')
+#     
+#    # Generate the zone file
+#     
+#    origin = Name((origin.rstrip('.') + '.').split('.'))
+#     
+#    # Create an empty dns.zone object.
+#    # We set check_origin=False because the zone contains no records.
+#    zone = dns.zone.from_text('', origin=origin, relativize=False, check_origin=False)
+#     
+#    rdclass = dns.rdataclass._by_text.get('IN')
+#     
+#    for rr in the_rrs:
+#         
+#        # Add trailing dot to rr.name
+#        record_name = rr.name.rstrip('.') + '.'
+#         
+#        if rr.type == 'SOA':
+#            # Add SOA Resource Record
+#             
+#            # SOA content:  primary hostmaster serial refresh retry expire default_ttl
+#            bits = rr.content.split()
+#            # Primary nameserver of SOA record
+#            primary = bits[0].rstrip('.') + '.'
+#            mname = Name(primary.split('.'))
+#            # Responsible hostmaster from SOA record
+#            hostmaster = bits[1].rstrip('.') + '.'
+#            rname = Name(hostmaster.split('.'))
+#             
+#            rdtype = dns.rdatatype._by_text.get('SOA')
+#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
+#            rdata = dns.rdtypes.ANY.SOA.SOA(rdclass, rdtype,
+#                mname = mname,
+#                rname = rname,
+#                serial = int(bits[2]),
+#                refresh = int(bits[3]),
+#                retry = int(bits[4]),
+#                expire = int(bits[5]),
+#                minimum = int(bits[6])
+#            )
+#            rdataset.add(rdata, ttl=int(rr.ttl))
+#         
+#        elif rr.type == 'NS':
+#            # Add NS Resource Record
+#            rdtype = dns.rdatatype._by_text.get('NS')
+#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
+#            rdata = dns.rdtypes.ANY.NS.NS(rdclass, rdtype,
+#                target = Name((rr.content.rstrip('.') + '.').split('.'))
+#            )
+#            rdataset.add(rdata, ttl=int(rr.ttl))
+#         
+#        elif rr.type == 'MX':
+#            # Add MX Resource Record
+#            rdtype = dns.rdatatype._by_text.get('MX')
+#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
+#            rdata = dns.rdtypes.ANY.MX.MX(rdclass, rdtype,
+#                preference = int(rr.prio),
+#                exchange = Name((rr.content.rstrip('.') + '.').split('.'))
+#            )
+#            rdataset.add(rdata, ttl=int(rr.ttl))
+#         
+#        elif rr.type == 'TXT':
+#            # Add TXT Resource Record
+#            rdtype = dns.rdatatype._by_text.get('TXT')
+#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
+#            rdata = dns.rdtypes.ANY.TXT.TXT(rdclass, rdtype,
+#                strings = [rr.content.strip('"')]
+#            )
+#            rdataset.add(rdata, ttl=int(rr.ttl))
+#         
+#        elif rr.type == 'CNAME':
+#            # Add CNAME Resource Record
+#            rdtype = dns.rdatatype._by_text.get('CNAME')
+#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
+#            rdata = dns.rdtypes.ANY.CNAME.CNAME(rdclass, rdtype,
+#                target = Name((rr.content.rstrip('.') + '.').split('.'))
+#            )
+#            rdataset.add(rdata, ttl=int(rr.ttl))
+#         
+#        elif rr.type == 'A':
+#            # Add A Resource Record
+#            rdtype = dns.rdatatype._by_text.get('A')
+#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
+#            rdata = dns.rdtypes.IN.A.A(rdclass, rdtype,
+#                address = rr.content
+#            )
+#            rdataset.add(rdata, ttl=int(rr.ttl))
+#         
+#        elif rr.type == 'AAAA':
+#            # Add AAAA Resource Record
+#            rdtype = dns.rdatatype._by_text.get('AAAA')
+#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
+#            rdata = dns.rdtypes.IN.AAAA.AAAA(rdclass, rdtype,
+#                address = rr.content
+#            )
+#            rdataset.add(rdata, ttl=int(rr.ttl))
+#         
+#        elif rr.type == 'SPF':
+#            # Add SPF Resource Record
+#            rdtype = dns.rdatatype._by_text.get('SPF')
+#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
+#            rdata = dns.rdtypes.ANY.SPF.SPF(rdclass, rdtype,
+#                strings = [rr.content.strip('"')]
+#            )
+#            rdataset.add(rdata, ttl=int(rr.ttl))
+#         
+#        elif rr.type == 'PTR':
+#            # Add PTR Resource Record
+#            rdtype = dns.rdatatype._by_text.get('PTR')
+#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
+#            rdata = dns.rdtypes.ANY.PTR.PTR(rdclass, rdtype,
+#                target = Name((rr.content.rstrip('.') + '.').split('.'))
+#            )
+#            rdataset.add(rdata, ttl=int(rr.ttl))
+#         
+#        elif rr.type == 'SRV':
+#            # Add SRV Resource Record
+#             
+#            # weight port target
+#            weight, port, target = rr.content.split()
+#             
+#            rdtype = dns.rdatatype._by_text.get('SRV')
+#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
+#            rdata = dns.rdtypes.IN.SRV.SRV(rdclass, rdtype,
+#                priority = int(rr.prio),
+#                weight = int(weight),
+#                port = int(port),
+#                target = Name((target.rstrip('.') + '.').split('.'))
+#            )
+#            rdataset.add(rdata, ttl=int(rr.ttl))
+#             
+#     
+#    # Export text (from the source code of http://www.dnspython.org/docs/1.10.0/html/dns.zone.Zone-class.html#to_file)
+#    EOL = '\n'
+#    f = StringIO.StringIO()
+#    f.write('$ORIGIN %s%s' % (origin, EOL))
+#    zone.to_file(f, sorted=True, relativize=False, nl=EOL)
+#    data = f.getvalue()
+#    f.close()
+#    return data
+
+
+    print("foo")
+    zone = localzone.context.load("/tmp/test.zone", origin=None)
+    for z in zone.records:
+        print(z)
+
+    with localzone.manage("/tmp/test.zone") as z:
+        r = z.add_record("greeting", "TXT", "hello, world!")
+        z.save()
+
+    with localzone.manage("/tmp/test.zone") as z:
+        print(*z.records, sep="\n")
+
+    zone = localzone.models.Zone("koeroo.local")
+    with zone:
+        r = zone.add_record("greeting", "TXT", "hello, world!")
+
+    for z in zone.records:
+        print(z)
+
+
+
+    buf = []
+    buf.append("$ORIGIN koeroo.local.           ; start of namespace")
+    buf.append("$TTL 86400	                ; 1 day")
+    buf.append("@                   IN  SOA     ns.koeroo.local.    hostmaster.koeroo.local.    (")
+    buf.append("                        7       ; serial")
+    buf.append("                        43200   ; refresh")
+    buf.append("                        180     ; retry")
+    buf.append("                        1209600 ; expire")
+    buf.append("                        10800   ; minimum")
+    buf.append("                    )")
+    buf.append("; NS Records")
+    buf.append("@                   IN    NS          ns.koeroo.local.")
+    buf.append("ldap                         A  192.168.1.2")
+
+    with open("/tmp/test.zone", "w") as f:
+        for i in buf:
+            f.write(i + os.linesep)
+
+
 ### Main
 def main(ctx):
     # Truncate and open file
     write_to_ddo_fh(ctx, None)
 
-    netbox_to_dnsmasq_dhcp_config(ctx)
+#    netbox_to_dnsmasq_dhcp_config(ctx)
+
+    powerdns_recursor_zoneing(ctx)
 
 ### Start up
 if __name__ == "__main__":
