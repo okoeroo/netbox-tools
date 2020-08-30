@@ -388,14 +388,6 @@ def get_ip_addrs_in_vrf(ctx, vrf_id):
 
     return results
 
-#                # dhcp-host=eth0,a0:3e:6b:aa:6e:fc,Acer_Wit_Lieke,192.168.1.67,600m
-#                write_to_ddo_fh(ctx, "dhcp-host=" + ",".join([ prefix_obj['vrf']['name'],
-#                                                mac_address,
-#                                                normalize_name(host_name + "_" + interface_name),
-#                                                str(ip_addr),
-#                                                ctx['dhcp_default_lease_time_host'],
-#                                              ]))
-
 
 # This function will create a DNSMasq formatted DHCP config file from Netbox
 def netbox_to_dnsmasq_dhcp_config(ctx):
@@ -571,13 +563,13 @@ def add_rr_to_zone(ctx, zone, rr_obj):
         rdataset.add(rdata, ttl=rr_obj['ttl'])
 
 def powerdns_recursor_zoneing(ctx):
-    zone = dns.zone.Zone('koeroo.local.')
+    zone = dns.zone.Zone(ctx['dhcp_default_domain'])
 
     rr_obj = {}
     rr_obj['type']    = 'SOA'
-    rr_obj['name']    = 'koeroo.local.'
-    rr_obj['mname']   = 'ns.koeroo.local.'
-    rr_obj['rname']   = 'hostmaster.koeroo.local'
+    rr_obj['name']    = ctx['dhcp_default_domain'] + "."
+    rr_obj['mname']   = 'ns.' + ctx['dhcp_default_domain'] + "."
+    rr_obj['rname']   = 'hostmaster.' + ctx['dhcp_default_domain']
     rr_obj['serial']  = 7
     rr_obj['refresh'] = 86400
     rr_obj['retry']   = 7200
@@ -587,20 +579,44 @@ def powerdns_recursor_zoneing(ctx):
     add_rr_to_zone(ctx, zone, rr_obj)
 
     rr_obj = {}
-    rr_obj['type'] = 'A'
-    rr_obj['name'] = 'www'
-    rr_obj['data'] = '192.168.10.30'
-
-    add_rr_to_zone(ctx, zone, rr_obj)
-
-    rr_obj = {}
     rr_obj['type'] = 'NS'
     rr_obj['name'] = '@'
-    rr_obj['data'] = 'ns.koeroo.local'
+    rr_obj['data'] = 'ns.' + ctx['dhcp_default_domain']
 
     add_rr_to_zone(ctx, zone, rr_obj)
 
-    f = open('/tmp/test1', 'w')
+
+    # Query for prefixes and ranges
+    q = query_netbox(ctx, "ipam/prefixes/")
+
+    for prefix_obj in q['results']:
+
+        # Skip non-IPv4
+        if prefix_obj['family']['value'] != 4:
+            continue
+
+        # Only focus on Home
+        if prefix_obj['site']['slug'] != 'home':
+            continue
+
+        # Query all IP addresses in the VRF. From each, fetch the associated interface and its MAC
+        # Extract all IP addresses in the VRF
+        ip_addrs_in_vrf = get_ip_addrs_in_vrf(ctx, prefix_obj['vrf']['id'])
+
+        # Run through the tupples
+        for tupple in ip_addrs_in_vrf:
+
+
+            rr_obj = {}
+            rr_obj['type'] = 'A'
+            rr_obj['name'] = normalize_name(tupple['host_name'] + "_" + \
+                                            tupple['interface_name'])
+            rr_obj['data'] = str(tupple['ip_addr'])
+
+            add_rr_to_zone(ctx, zone, rr_obj)
+
+
+    f = open(ctx['zonefile'], 'w')
     zone.to_file(f)
     f.close()
     return
