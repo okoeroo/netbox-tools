@@ -205,7 +205,7 @@ def strip_query(ctx, query):
     return query
 
 ### 
-def query_netbox(ctx, query, req_parameters=None):
+def query_netbox_call(ctx, query, req_parameters=None):
     req_headers = {}
     req_headers['Authorization'] = " ".join(["Token", ctx['authkey']])
     req_headers['Content-Type'] = "application/json"
@@ -213,13 +213,41 @@ def query_netbox(ctx, query, req_parameters=None):
 
     query_stripped = strip_query(ctx, query)
 
+    if ctx['verbose']:
+        print(query_stripped)
+
     get_req = requests.get('{}/api/{}'.format(ctx['netbox_base_url'], query_stripped),
                            timeout=3,
                            headers=req_headers,
                            params=req_parameters)
     get_req.raise_for_status()
 
+    if ctx['verbose']:
+        print(get_req.text)
+
+
+    # Results retrieved
     return get_req.json()
+
+def query_netbox(ctx, query, req_parameters=None):
+
+    # Results retrieved
+    response = query_netbox_call(ctx, query, req_parameters)
+
+    # Merge response in memory
+    req_next = response # setups for loop
+    while 'next' in req_next and req_next['next'] and len(req_next['next']) > 0:
+        res_next = query_netbox(ctx, req_next['next'], req_parameters)
+
+        if ctx['verbose']:
+            print(res_next)
+
+        for i in res_next['results']:
+            response['results'].append(i)
+
+        req_next = res_next
+
+    return response
 
 ### Sanity checks: on failure, makes no sense to continue
 def sanity_checks(ctx):
@@ -276,7 +304,6 @@ def get_net_default_gateway_from_vrf(ctx, vrf_id):
         write_to_ddo_fh(ctx, "# No default gateway available")
         return None
     else:
-
         return q_ip_addrs['results'][0]
 
 
