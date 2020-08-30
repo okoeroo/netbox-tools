@@ -237,7 +237,7 @@ def query_netbox(ctx, query, req_parameters=None):
     # Merge response in memory
     req_next = response # setups for loop
     while 'next' in req_next and req_next['next'] and len(req_next['next']) > 0:
-        res_next = query_netbox(ctx, req_next['next'], req_parameters)
+        res_next = query_netbox_call(ctx, req_next['next'], req_parameters)
 
         if ctx['verbose']:
             print(res_next)
