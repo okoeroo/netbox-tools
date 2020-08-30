@@ -368,10 +368,14 @@ def get_ip_addrs_in_vrf(ctx, vrf_id):
 #                                                str(ip_addr),
 #                                                ctx['dhcp_default_lease_time_host'],
 #                                              ]))
-    
+
 
 # This function will create a DNSMasq formatted DHCP config file from Netbox
 def netbox_to_dnsmasq_dhcp_config(ctx):
+
+    # Truncate and open file cleanly
+    write_to_ddo_fh(ctx, None)
+
     # Generic settings
     write_to_ddo_fh(ctx, "dhcp-leasefile=" + ctx['dhcp_lease_file'])
 
@@ -772,10 +776,7 @@ def powerdns_recursor_zoneing(ctx):
 
 ### Main
 def main(ctx):
-    # Truncate and open file
-    write_to_ddo_fh(ctx, None)
-
-#    netbox_to_dnsmasq_dhcp_config(ctx)
+    netbox_to_dnsmasq_dhcp_config(ctx)
 
     powerdns_recursor_zoneing(ctx)
 
