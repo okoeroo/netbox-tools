@@ -84,6 +84,11 @@ def argparsing():
                         help="Zonefile format to be consumed by Bind or PowerDNS.",
                         default=None,
                         type=str)
+    parser.add_argument("-rl", "--relativize",
+                        dest='zonefile_relativize',
+                        help="Create relativized names in the zonefile",
+                        action="store_true",
+                        default=True)
 
     parser.add_argument("-e", "--zoneheader",           dest='zoneheader',
                                                         help="Zonefile header template.",
@@ -107,8 +112,9 @@ def argparsing():
     ctx['dhcp_lease_file']                = args.dhcp_lease_file
     ctx['dhcp_authoritive']               = args.dhcp_authoritive
     ctx['dhcp_default_domain']            = args.dhcp_default_domain
+    ctx['zonefile']                       = args.zonefile
+    ctx['zonefile_relativize']            = args.zonefile_relativize
 
-    ctx['zonefile']           = args.zonefile
     ctx['zoneheader']         = args.zoneheader
     ctx['zonefooter']         = args.zonefooter
     return ctx
@@ -529,6 +535,17 @@ def add_rr_to_zone(ctx, zone, rr_obj):
         rdataset.add(rdata, ttl=rr_obj['ttl'])
         return
 
+    # CNAME
+    if rr_obj['type'] == 'CNAME': 
+        if 'name' not in rr_obj or 'type' not in rr_obj or 'data' not in rr_obj:
+            raise "rr_obj missing elements for CNAME record"
+
+        rdtype = dns.rdatatype._by_text.get(rr_obj['type'])
+        rdataset = zone.find_rdataset(rr_obj['name'], rdtype=rdtype, create=True)
+        rdata = dns.rdata.from_text(rdclass, rdtype, rr_obj['data'])
+        rdataset.add(rdata, ttl=rr_obj['ttl'])
+        return
+
     # SOA
     if rr_obj['type'] == 'SOA':
         if 'name' not in rr_obj or 'type' not in rr_obj or \
@@ -561,66 +578,6 @@ def add_rr_to_zone(ctx, zone, rr_obj):
                                  rr_obj['data'])
 
         rdataset.add(rdata, ttl=rr_obj['ttl'])
-
-def powerdns_recursor_zoneing(ctx):
-    zone = dns.zone.Zone(ctx['dhcp_default_domain'])
-
-    rr_obj = {}
-    rr_obj['type']    = 'SOA'
-    rr_obj['name']    = ctx['dhcp_default_domain'] + "."
-    rr_obj['mname']   = 'ns.' + ctx['dhcp_default_domain'] + "."
-    rr_obj['rname']   = 'hostmaster.' + ctx['dhcp_default_domain']
-    rr_obj['serial']  = 7
-    rr_obj['refresh'] = 86400
-    rr_obj['retry']   = 7200
-    rr_obj['expire']  = 3600000
-    rr_obj['minimum'] = 1800
-
-    add_rr_to_zone(ctx, zone, rr_obj)
-
-    rr_obj = {}
-    rr_obj['type'] = 'NS'
-    rr_obj['name'] = '@'
-    rr_obj['data'] = 'ns.' + ctx['dhcp_default_domain']
-
-    add_rr_to_zone(ctx, zone, rr_obj)
-
-
-    # Query for prefixes and ranges
-    q = query_netbox(ctx, "ipam/prefixes/")
-
-    for prefix_obj in q['results']:
-
-        # Skip non-IPv4
-        if prefix_obj['family']['value'] != 4:
-            continue
-
-        # Only focus on Home
-        if prefix_obj['site']['slug'] != 'home':
-            continue
-
-        # Query all IP addresses in the VRF. From each, fetch the associated interface and its MAC
-        # Extract all IP addresses in the VRF
-        ip_addrs_in_vrf = get_ip_addrs_in_vrf(ctx, prefix_obj['vrf']['id'])
-
-        # Run through the tupples
-        for tupple in ip_addrs_in_vrf:
-
-
-            rr_obj = {}
-            rr_obj['type'] = 'A'
-            rr_obj['name'] = normalize_name(tupple['host_name'] + "_" + \
-                                            tupple['interface_name'])
-            rr_obj['data'] = str(tupple['ip_addr'])
-
-            add_rr_to_zone(ctx, zone, rr_obj)
-
-
-    f = open(ctx['zonefile'], 'w')
-    zone.to_file(f)
-    f.close()
-    return
-
 #
 #def generate_zone_file(origin):
 #    """Generates a zone file.
@@ -777,44 +734,82 @@ def powerdns_recursor_zoneing(ctx):
 #    return data
 
 
-    print("foo")
-    zone = localzone.context.load("/tmp/test.zone", origin=None)
-    for z in zone.records:
-        print(z)
+def dns_canonicalize(s):
+    if not s.endswith('.'):
+        return s + '.'
+    else:
+        return
 
-    with localzone.manage("/tmp/test.zone") as z:
-        r = z.add_record("greeting", "TXT", "hello, world!")
-        z.save()
+def powerdns_recursor_zoneing(ctx):
+    zone = dns.zone.Zone(ctx['dhcp_default_domain'], relativize=False)
 
-    with localzone.manage("/tmp/test.zone") as z:
-        print(*z.records, sep="\n")
+    rr_obj = {}
+    rr_obj['type']    = 'SOA'
+    rr_obj['name']    = dns_canonicalize(ctx['dhcp_default_domain'])
+    rr_obj['mname']   = dns_canonicalize('ns.' + ctx['dhcp_default_domain'])
+    rr_obj['rname']   = 'hostmaster.' + ctx['dhcp_default_domain']
+    rr_obj['serial']  = 7
+    rr_obj['refresh'] = 86400
+    rr_obj['retry']   = 7200
+    rr_obj['expire']  = 3600000
+    rr_obj['minimum'] = 1800
 
-    zone = localzone.models.Zone("koeroo.local")
-    with zone:
-        r = zone.add_record("greeting", "TXT", "hello, world!")
+    add_rr_to_zone(ctx, zone, rr_obj)
 
-    for z in zone.records:
-        print(z)
+    rr_obj = {}
+    rr_obj['type'] = 'NS'
+    rr_obj['name'] = '@'
+    rr_obj['data'] = dns_canonicalize('ns.' + ctx['dhcp_default_domain'])
+
+    add_rr_to_zone(ctx, zone, rr_obj)
+
+
+    # Query for prefixes and ranges
+    q = query_netbox(ctx, "ipam/prefixes/")
+
+    for prefix_obj in q['results']:
+
+        # Skip non-IPv4
+        if prefix_obj['family']['value'] != 4:
+            continue
+
+        # Only focus on Home
+        if prefix_obj['site']['slug'] != 'home':
+            continue
+
+        # Query all IP addresses in the VRF. From each, fetch the associated interface and its MAC
+        # Extract all IP addresses in the VRF
+        ip_addrs_in_vrf = get_ip_addrs_in_vrf(ctx, prefix_obj['vrf']['id'])
+
+        # Run through the tupples
+        for tupple in ip_addrs_in_vrf:
+
+            # Add the A record for each interface
+            rr_obj = {}
+            rr_obj['type'] = 'A'
+            rr_obj['name'] = normalize_name(tupple['host_name'] + "_" + \
+                                            tupple['interface_name'])
+            rr_obj['data'] = str(tupple['ip_addr'])
+
+            add_rr_to_zone(ctx, zone, rr_obj)
+
+#            if tupple['ip_addr'] == primary_ip:
+#                name gaat naar primary interface naam
+#
+#                # Add the 
+#                rr_obj = {}
+#                rr_obj['type'] = 'CNAME'
+#                rr_obj['name'] = 
+#                rr_obj['data'] = dns_canonicalize('target.' + ctx['dhcp_default_domain'])
+#
+#                add_rr_to_zone(ctx, zone, rr_obj)
 
 
 
-    buf = []
-    buf.append("$ORIGIN koeroo.local.           ; start of namespace")
-    buf.append("$TTL 86400	                ; 1 day")
-    buf.append("@                   IN  SOA     ns.koeroo.local.    hostmaster.koeroo.local.    (")
-    buf.append("                        7       ; serial")
-    buf.append("                        43200   ; refresh")
-    buf.append("                        180     ; retry")
-    buf.append("                        1209600 ; expire")
-    buf.append("                        10800   ; minimum")
-    buf.append("                    )")
-    buf.append("; NS Records")
-    buf.append("@                   IN    NS          ns.koeroo.local.")
-    buf.append("ldap                         A  192.168.1.2")
-
-    with open("/tmp/test.zone", "w") as f:
-        for i in buf:
-            f.write(i + os.linesep)
+    f = open(ctx['zonefile'], 'w')
+    zone.to_file(f, relativize=False)
+    f.close()
+    return
 
 
 ### Main
