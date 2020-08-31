@@ -793,21 +793,55 @@ def powerdns_recursor_zoneing(ctx):
 
             add_rr_to_zone(ctx, zone, rr_obj)
 
-#            if tupple['ip_addr'] == primary_ip:
-#                name gaat naar primary interface naam
-#
-#                # Add the 
-#                rr_obj = {}
-#                rr_obj['type'] = 'CNAME'
-#                rr_obj['name'] = 
-#                rr_obj['data'] = dns_canonicalize('target.' + ctx['dhcp_default_domain'])
-#
-#                add_rr_to_zone(ctx, zone, rr_obj)
+#            print('tupple')
+#            print(tupple)
+
+            parameters = {}
+            parameters['mac_address'] = tupple['mac_address']
+
+            # Device or VM?
+            device = query_netbox(ctx, "dcim/devices/", parameters)
+            if device['count'] == 0:
+                device = query_netbox(ctx, "virtualization/virtual-machines/", parameters)
+                if device['count'] == 0:
+                    # Not in Database... corruption?
+                    continue
+
+            # Extract primary IP of device or virtual machine
+            if 'primary_ip' in device['results'][0] and 'address' in device['results'][0]['primary_ip']:
+                plain_ip_address = device['results'][0]['primary_ip']['address'].split('/')[0]
+
+                # Check: is it equal to the current record?
+                if tupple['ip_addr'] == ipaddress.ip_address(plain_ip_address):
+
+                    rr_obj['name'] = normalize_name(tupple['host_name'] + "_" + \
+                                                    tupple['interface_name'])
+                    rr_obj = {}
+                    rr_obj['type'] = 'CNAME'
+                    rr_obj['name'] = normalize_name(tupple['host_name'])
+                    rr_obj['data'] = dns_canonicalize(normalize_name(tupple['host_name'] + "_" + \
+                                                                     tupple['interface_name'] + \
+                                                                     "." + \
+                                                                     ctx['dhcp_default_domain'])
+                                                     )
+
+                    add_rr_to_zone(ctx, zone, rr_obj)
 
 
+    # Inject footer file
+    if 'zonefooter' in ctx and len(ctx['zonefooter']) > 0:
+        f = open(ctx['zonefooter'], 'r')
+        foot = f.read()
+        f.close()
 
+    # Write zonefile
     f = open(ctx['zonefile'], 'w')
     zone.to_file(f, relativize=False)
+
+    # Add footer to zonefile
+    if foot is not None:
+        f.write(foot)
+
     f.close()
     return
 
