@@ -140,6 +140,10 @@ def get_lease_time(value):
     else:
         return None
 
+def pp(obj):
+    pp = pprint.PrettyPrinter(indent=4)
+    pp.pprint(obj)
+
 def is_valid_macaddr802(value):
     allowed = re.compile(r"""
                          (
@@ -169,9 +173,6 @@ def is_ipaddress(to_check):
 
 
 def put_zonefile(ctx):
-#    pp = pprint.PrettyPrinter(indent=4)
-#    pp.pprint(ctx['dhcp-hosts'])
-
     header = open(ctx['zoneheader']).read()
     footer = open(ctx['zonefooter']).read()
 
@@ -327,77 +328,94 @@ def get_dns_host_from_ip_address(ctx, ip_addr_obj):
     else:
         return None
 
-# Query all IP addresses in the VRF. From each, fetch the associated interface and its MAC
-# Extract all IP addresses in the VRF
-def get_ip_addrs_in_vrf(ctx, vrf_id):
-    results = []
 
+def get_ipaddress_from_ipaddresses_obj(ip_addr_obj):
+    return str(ipaddress.ip_address(ip_addr_obj['address'].split("/")[0]))
+
+
+def get_network_address_from_ipaddresses_obj(ip_addr_obj):
+    return str(ipaddress.ip_network(ip_addr_obj['address'], strict=False))
+
+
+def get_macaddress_from_ipaddresses_obj(ctx, ip_addr_obj):
+
+    # Get MAC from interface object
+    interface_obj = query_netbox(ctx, ip_addr_obj['assigned_object']['url'])
+    return interface_obj['mac_address']
+
+
+def get_hostname_from_ipaddresses_obj(ip_addr_obj):
+    if 'assigned_object' not in ip_addr_obj:
+        return "no_assigned_object"
+
+    try:
+        if 'device' in ip_addr_obj['assigned_object']:
+            return ip_addr_obj['assigned_object']['device']['name']
+        elif 'virtual_machine' in ip_addr_obj['assigned_object']:
+            return ip_addr_obj['assigned_object']['virtual_machine']['name']
+        else:
+            return "undefined"
+
+    except Exception as e:
+        print(str(e))
+        pp(ip_addr_obj)
+        sys.exit(1)
+
+
+def get_interface_name_from_ipaddresses_obj(ip_addr_obj):
+    if 'assigned_object' not in ip_addr_obj:
+        return "no_assigned_object"
+
+    # Get interface name
+    return ip_addr_obj['assigned_object']['name']
+
+
+def assemble_dhcp_host_dict_from_ip_addr_obj(ctx, ip_addr_obj):
+    res_tup = {}
+
+    res_tup['ip_addr'] = get_ipaddress_from_ipaddresses_obj(ip_addr_obj)
+    res_tup['ip_net'] = get_network_address_from_ipaddresses_obj(ip_addr_obj)
+    res_tup['mac_address'] = get_macaddress_from_ipaddresses_obj(ctx, ip_addr_obj)
+
+    res_tup['hostname'] = get_hostname_from_ipaddresses_obj(ip_addr_obj)
+    res_tup['normalized_hostname'] = normalize_name(res_tup['hostname'])
+
+    res_tup['interface_name'] = get_interface_name_from_ipaddresses_obj(ip_addr_obj)
+    res_tup['host_iface'] = res_tup['normalized_hostname'] + "_" + res_tup['interface_name']
+
+    return res_tup
+
+
+def get_vrf_vlan_name_from_prefix_obj(prefix_obj):
+    return prefix_obj['vrf']['name'] + "_vlan_" + str(prefix_obj['vlan']['vid'])
+
+
+def get_dhcp_host_dict_from_vrf(ctx, vrf_id):
     parameters = {}
     parameters['vrf_id'] = vrf_id
     q_ip_addrs = query_netbox(ctx, "ipam/ip-addresses/", parameters)
 
     if q_ip_addrs['count'] == 0:
-        write_to_ddo_fh(ctx, "# No IP addresses in the VRF available.")
-    else:
-        for ip_addr_obj in q_ip_addrs['results']:
-            ip_addr = \
-                ipaddress.ip_address(ip_addr_obj['address'].split("/")[0])
+        return None
 
-            ip_net = \
-                ipaddress.ip_network(ip_addr_obj['address'], strict=False)
+    dhcp_hosts = []
 
-            # Get hostname
-            if ip_addr_obj['interface']['device'] is not None:
-                host_name = \
-                    ip_addr_obj['interface']['device']['name']
-            elif ip_addr_obj['interface']['virtual_machine'] is not None:
-                host_name = \
-                    ip_addr_obj['interface']['virtual_machine']['name']
-            else:
-                host_name = "undefined"
+    # VRF scoped dhcp hosts
+    for ip_addr_obj in q_ip_addrs['results']:
+        dhcp_hosts.append(assemble_dhcp_host_dict_from_ip_addr_obj(ctx,
+                                                                   ip_addr_obj))
 
-            # Get MAC from interface object
-            interface_obj = query_netbox(ctx, ip_addr_obj['interface']['url'])
-            mac_address = interface_obj['mac_address']
-
-
-            # Get interface name
-            interface_name =  ip_addr_obj['interface']['name']
-
-            try:
-                if mac_address is None:
-                    write_to_ddo_fh(ctx, "## No MAC address available. " + str(ip_addr))
-                    continue
-
-                if host_name is None:
-                    write_to_ddo_fh(ctx, "## No hostname available.")
-                    continue
-
-                if ip_addr is None:
-                    write_to_ddo_fh(ctx, "## No IPv4 Address available.")
-                    continue
-
-                if interface_name is None:
-                    write_to_ddo_fh(ctx, "## No interface name available.")
-                    continue
-
-                results.append({'mac_address': mac_address,
-                                'host_name': host_name,
-                                'interface_name': interface_name,
-                                'ip_addr': ip_addr})
-            except Exception as e:
-                print(str(e))
-
-                pp = pprint.PrettyPrinter(indent=4)
-                pp.pprint(ip_addr_obj)
-                sys.exit(1)
-
-    return results
+    return dhcp_hosts
 
 
 # This function will create a DNSMasq formatted DHCP config file from Netbox
-def netbox_to_dnsmasq_dhcp_config(ctx):
+## Create DNSMasq DHCP config file by:
+## 1. Fetching defaults
+## 2. Fetching VRFs, and VRF info.
+## 3. Fetch associated default gateway and DNS config
+## 4. Fetch (virtual) hosts and its data (IP and MAC)
 
+def netbox_to_dnsmasq_dhcp_config(ctx):
     # Truncate and open file cleanly
     write_to_ddo_fh(ctx, None)
 
@@ -409,22 +427,28 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
 
     write_to_ddo_fh(ctx, "domain=" + ctx['dhcp_default_domain'])
 
+    # Get prefixes
+    prefixes = query_netbox(ctx, "ipam/prefixes/")
 
-    # Query for prefixes and ranges
-    q = query_netbox(ctx, "ipam/prefixes/")
+    if prefixes['count'] == 0:
+        print("No prefixes found to complete")
 
-    for prefix_obj in q['results']:
+    for prefix_obj in prefixes['results']:
         dnsmasq_dhcp = ""
 
         # Skip non-IPv4
-        if prefix_obj['family']['value'] != 4:
+        if prefix_obj['is_pool'] != True:
             continue
 
-        # Only focus on Home
-        if prefix_obj['site']['slug'] != 'home':
-            continue
+        # Generate VRF header, example
 
-        # Generate VRF header
+        ### Site:    Home
+        ### Role:    Untagged
+        ### Vlan:    66 (Home VLAN) with ID: 66
+        ### VRF:     vrf_66_homelan
+        ### Prefix:  192.168.1.0/24
+
+
         if prefix_obj['site'] is not None:
             dnsmasq_dhcp = " ".join([dnsmasq_dhcp, "\n###", 
                                      "Site:   ", 
@@ -451,65 +475,62 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
         write_to_ddo_fh(ctx, dnsmasq_dhcp)
         write_to_ddo_fh(ctx, "")
 
-        # Print dhcp-range
-        ip_network = ipaddress.ip_network(prefix_obj['prefix'])
-        write_to_ddo_fh(ctx, "dhcp-range=" + ",".join([prefix_obj['vrf']['name'],
-                                        str(ip_network.network_address + \
-                                            ctx['dhcp_host_range_offset_min']),
-                                        str(ip_network.network_address + \
-                                            ctx['dhcp_host_range_offset_max']),
-                                        str(ip_network.netmask),
-                                        ctx['dhcp_default_lease_time_range']
-                                       ]))
-
-###########
+        # Get default gateway from the VRF based on a tag
         default_gateway_ip_addr_obj = get_net_default_gateway_from_vrf(ctx, prefix_obj['vrf']['id'])
         if default_gateway_ip_addr_obj is not None:
             default_gateway_ip_addr = \
                 ipaddress.ip_address(default_gateway_ip_addr_obj['address'].split("/")[0])
 
+            # Write default gateway
             if default_gateway_ip_addr is not None:
-                write_to_ddo_fh(ctx, "".join(["dhcp-option=",
-                               prefix_obj['vrf']['name'],
-                               ",",
-                               "3", # Default gateway
-                               ",",
-                               str(default_gateway_ip_addr),
-                               "  # Default Gateway"
-                              ]))
+                write_to_ddo_fh(ctx, "dhcp-option=" + \
+                                     ",".join([get_vrf_vlan_name_from_prefix_obj(prefix_obj),
+                                               "3", # Default gateway
+                                               str(default_gateway_ip_addr)
+                                              ]) +
+                                     "  # Default Gateway")
 
+                # Get DNS from the default gateway record
                 default_dnsname_ip_addr = get_dns_host_from_ip_address(ctx, \
                     default_gateway_ip_addr_obj)
 
+                # Write DNS server
                 if default_dnsname_ip_addr is not None:
-                    write_to_ddo_fh(ctx, "".join(["dhcp-option=",
-                                   prefix_obj['vrf']['name'],
-                                   ",",
-                                   "6", # Default DNS
-                                   ",",
-                                   str(default_dnsname_ip_addr),
-                                   "  # Default DNS"
-                                  ]))
+                    write_to_ddo_fh(ctx, "dhcp-option=" + \
+                                         ",".join([get_vrf_vlan_name_from_prefix_obj(prefix_obj),
+                                                   "6", # Default DNS
+                                                   str(default_dnsname_ip_addr)
+                                                  ]) +
+                                         "  # Default DNS")
+
+        # Print dhcp-range
+        ip_network = ipaddress.ip_network(prefix_obj['prefix'])
+        write_to_ddo_fh(ctx, "dhcp-range=" + \
+                             ",".join([get_vrf_vlan_name_from_prefix_obj(prefix_obj),
+                                     str(ip_network.network_address + \
+                                         ctx['dhcp_host_range_offset_min']),
+                                     str(ip_network.network_address + \
+                                         ctx['dhcp_host_range_offset_max']),
+                                     str(ip_network.netmask),
+                                     ctx['dhcp_default_lease_time_range']
+                                    ]))
 
         write_to_ddo_fh(ctx, "")
 
 
         # Query all IP addresses in the VRF. From each, fetch the associated interface and its MAC
         # Extract all IP addresses in the VRF
-        ip_addrs_in_vrf = get_ip_addrs_in_vrf(ctx, prefix_obj['vrf']['id'])
+        dhcp_host_tuples = get_dhcp_host_dict_from_vrf(ctx, prefix_obj['vrf']['id'])
 
-        for tupple in ip_addrs_in_vrf:
-
+        for tup in dhcp_host_tuples:
             # dhcp-host=eth0,a0:3e:6b:aa:6e:fc,Acer_Wit_Lieke,192.168.1.67,600m
-            write_to_ddo_fh(ctx, "dhcp-host=" + ",".join([ prefix_obj['vrf']['name'],
-                                            tupple['mac_address'],
-                                            normalize_name(tupple['host_name'] + "_" + \
-                                                tupple['interface_name']),
-                                            str(tupple['ip_addr']),
-                                            ctx['dhcp_default_lease_time_host'],
+            write_to_ddo_fh(ctx, "dhcp-host=" +
+                                 ",".join([get_vrf_vlan_name_from_prefix_obj(prefix_obj),
+                                           tup['mac_address'],
+                                           tup['host_iface'],
+                                           tup['ip_addr'],
+                                           ctx['dhcp_default_lease_time_host']
                                           ]))
-
-        write_to_ddo_fh(ctx, "")
 
 
 def add_rr_to_zone(ctx, zone, rr_obj):
@@ -534,6 +555,26 @@ def add_rr_to_zone(ctx, zone, rr_obj):
         rdata = dns.rdata.from_text(rdclass, rdtype, rr_obj['data'])
         rdataset.add(rdata, ttl=rr_obj['ttl'])
         return
+
+    # PTR
+    if rr_obj['type'] == 'PTR': 
+        if 'name' not in rr_obj or 'type' not in rr_obj or 'data' not in rr_obj:
+            raise "rr_obj missing elements for A record"
+
+        print(rr_obj['name'])
+        rdtype = dns.rdatatype._by_text.get(rr_obj['type'])
+        rdataset = zone.find_rdataset(rr_obj['name'], rdtype=rdtype, create=True)
+        rdata = dns.rdata.from_text(rdclass, rdtype, rr_obj['data'])
+        rdataset.add(rdata, ttl=rr_obj['ttl'])
+        return
+
+#            # Add PTR Resource Record
+#            rdtype = dns.rdatatype._by_text.get('PTR')
+#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
+#            rdata = dns.rdtypes.ANY.PTR.PTR(rdclass, rdtype,
+#                target = Name((rr.content.rstrip('.') + '.').split('.'))
+#            )
+#            rdataset.add(rdata, ttl=int(rr.ttl))
 
     # CNAME
     if rr_obj['type'] == 'CNAME': 
@@ -779,7 +820,9 @@ def powerdns_recursor_zoneing(ctx):
 
         # Query all IP addresses in the VRF. From each, fetch the associated interface and its MAC
         # Extract all IP addresses in the VRF
-        ip_addrs_in_vrf = get_ip_addrs_in_vrf(ctx, prefix_obj['vrf']['id'])
+#####        ip_addrs_in_vrf = get_ip_addrs_in_vrf(ctx, prefix_obj['vrf']['id'])
+#####        dhcp_host_tuples = get_dhcp_host_dict_from_vrf(ctx, prefix_obj['vrf']['id'])
+        ip_addrs_in_vrf = get_dhcp_host_dict_from_vrf(ctx, prefix_obj['vrf']['id'])
 
         # Run through the tupples
         for tupple in ip_addrs_in_vrf:
@@ -787,11 +830,23 @@ def powerdns_recursor_zoneing(ctx):
             # Add the A record for each interface
             rr_obj = {}
             rr_obj['type'] = 'A'
-            rr_obj['name'] = normalize_name(tupple['host_name'] + "_" + \
+            rr_obj['name'] = normalize_name(tupple['hostname'] + "_" + \
                                             tupple['interface_name'])
             rr_obj['data'] = str(tupple['ip_addr'])
 
             add_rr_to_zone(ctx, zone, rr_obj)
+
+
+#            # Add the PTR record for each interface
+#            # 131.28.12.202.in-addr.arpa. IN PTR svc00.apnic.net.
+#            rr_obj = {}
+#            rr_obj['type'] = 'PTR'
+#            rr_obj['name'] = ipaddress.ip_address(str(tupple['ip_addr'])).reverse_pointer
+#            rr_obj['data'] = dns_canonicalize(normalize_name(tupple['host_name'] + "_" + \
+#                                                             tupple['interface_name'] + "." + \
+#                                                             ctx['dhcp_default_domain']))
+#
+#            add_rr_to_zone(ctx, zone, rr_obj)
 
 #            print('tupple')
 #            print(tupple)
@@ -836,7 +891,7 @@ def powerdns_recursor_zoneing(ctx):
 
     # Write zonefile
     f = open(ctx['zonefile'], 'w')
-    zone.to_file(f, relativize=False)
+    zone.to_file(f, relativize=True)
 
     # Add footer to zonefile
     if foot is not None:
@@ -848,8 +903,10 @@ def powerdns_recursor_zoneing(ctx):
 
 ### Main
 def main(ctx):
+    print("Netbox to DNSMasq DHCP config")
     netbox_to_dnsmasq_dhcp_config(ctx)
 
+    print("Netbox to DNS Zonefile")
     powerdns_recursor_zoneing(ctx)
 
 ### Start up
