@@ -144,6 +144,14 @@ def pp(obj):
     pp = pprint.PrettyPrinter(indent=4)
     pp.pprint(obj)
 
+
+def dns_canonicalize(s):
+    if not s.endswith('.'):
+        return s + '.'
+    else:
+        return
+
+
 def is_valid_macaddr802(value):
     allowed = re.compile(r"""
                          (
@@ -775,11 +783,28 @@ def add_rr_to_zone(ctx, zone, rr_obj):
 #    return data
 
 
-def dns_canonicalize(s):
-    if not s.endswith('.'):
-        return s + '.'
-    else:
-        return
+## Based on the mac address fetch a device.
+## The device can be a virtual machine or device
+def fetch_devices_from_mac_address(mac_address):
+    parameters = {}
+    parameters['mac_address'] = mac_address
+
+    # Device or VM?
+    devices = query_netbox(ctx, "dcim/devices/", parameters)
+    if devices['count'] == 0:
+        devices = query_netbox(ctx, "virtualization/virtual-machines/", parameters)
+        if devices['count'] == 0:
+            # Not in Database...
+            return None
+
+    return devices
+
+def extract_primary_ip_from_device_obj(device):
+
+    # Extract primary IP from device or virtual machine
+    if 'primary_ip' in device['results'][0] and 'address' in device['results'][0]['primary_ip']:
+        plain_ip_address = device['results'][0]['primary_ip']['address'].split('/')[0]
+
 
 def powerdns_recursor_zoneing(ctx):
     zone = dns.zone.Zone(ctx['dhcp_default_domain'], relativize=False)
@@ -851,30 +876,40 @@ def powerdns_recursor_zoneing(ctx):
 #            print('tupple')
 #            print(tupple)
 
-            parameters = {}
-            parameters['mac_address'] = tupple['mac_address']
+            if 'mac_address' not in tupple or \
+                    tupple['mac_address'] is None or \
+                    len(tupple['mac_address']) == 0:
+                print("No mac address available for",
+                        tupple['hostname'],
+                        "interface",
+                        tupple['interface_name'],
+                        "with",
+                        tupple['ip_addr'],
+                        file=sys.stderr)
+                continue
 
-            # Device or VM?
-            device = query_netbox(ctx, "dcim/devices/", parameters)
-            if device['count'] == 0:
-                device = query_netbox(ctx, "virtualization/virtual-machines/", parameters)
-                if device['count'] == 0:
-                    # Not in Database... corruption?
-                    continue
+            devices = fetch_devices_from_mac_address(tupple['mac_address'])
+            if devices is None:
+                print("No device found based on MAC address:", tupple['mac_address'], 
+                        file=sys.stderr)
+                continue
+
+            # Assume only first record to be relevant, as the MAC address is unique.
+            device = devices['results'][0]
 
             # Extract primary IP of device or virtual machine
-            if 'primary_ip' in device['results'][0] and 'address' in device['results'][0]['primary_ip']:
-                plain_ip_address = device['results'][0]['primary_ip']['address'].split('/')[0]
+            if 'primary_ip' in device and 'address' in device['primary_ip']:
+                plain_ip_address = device['primary_ip']['address'].split('/')[0]
 
                 # Check: is it equal to the current record?
-                if tupple['ip_addr'] == ipaddress.ip_address(plain_ip_address):
+                if tupple['ip_addr'] == plain_ip_address:
 
-                    rr_obj['name'] = normalize_name(tupple['host_name'] + "_" + \
+                    rr_obj['name'] = normalize_name(tupple['hostname'] + "_" + \
                                                     tupple['interface_name'])
                     rr_obj = {}
                     rr_obj['type'] = 'CNAME'
-                    rr_obj['name'] = normalize_name(tupple['host_name'])
-                    rr_obj['data'] = dns_canonicalize(normalize_name(tupple['host_name'] + "_" + \
+                    rr_obj['name'] = normalize_name(tupple['hostname'])
+                    rr_obj['data'] = dns_canonicalize(normalize_name(tupple['hostname'] + "_" + \
                                                                      tupple['interface_name'] + \
                                                                      "." + \
                                                                      ctx['dhcp_default_domain'])
