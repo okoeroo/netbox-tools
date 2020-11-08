@@ -157,3 +157,47 @@ optional arguments:
   -f ZONEFOOTER, --zonefooter ZONEFOOTER
                         Zonefile footer template.
 ```
+
+## Example script to mash it all up
+```
+echo "Running netbox-2-dnsmasq.py"
+
+~/netbox-tools/netbox-2-dnsmasq.py \
+    --authkey <heregoesyourkey> \
+    --base-url http://netbox.koeroo.local \
+    --dnsmasq-dhcp-output-file /tmp/generated-dhcp.conf \
+    --dhcp-default-lease-time-range 600m \
+    --dhcp-default-lease-time-host 90m \
+    --dhcp-host-range-offset-min 100 \
+    --dhcp-host-range-offset-max 199 \
+    --dhcp-lease-file /var/cache/dnsmasq/dnsmasq-dhcp.leasefile \
+    -da \
+    --dhcp-default-domain koeroo.local \
+    --zonefile /tmp/generated-zonefile \
+    --zoneheader /home/pi/config/dns/zonefiles/templates/koeroo.local.header \
+    --zonefooter /home/pi/config/dns/zonefiles/templates/koeroo.local.footer
+
+if [ $? -ne 0 ]; then
+    echo "Error!"
+    exit 1
+fi
+
+sudo cp \
+    /tmp/generated-dhcp.conf \
+    /etc/dnsmasq.d/dhcp.conf
+
+echo "Reloading DNSMasq"
+sudo systemctl restart dnsmasq
+
+sudo cp \
+    /tmp/generated-zonefile \
+    /etc/powerdns/zonefiles/koeroo.local
+
+echo "Backup running zonefile"
+sudo cp -v /etc/powerdns/zonefiles/koeroo.local        /etc/powerdns/zonefiles/koeroo.local.backup
+sudo cp -v /tmp/generated-zonefile                     /etc/powerdns/zonefiles/koeroo.local
+     cp -v /tmp/generated-zonefile                     /home/pi/config/dns/powerdns/zonefiles/koeroo.local
+
+echo sudo rec_control reload-zones
+sudo rec_control reload-zones
+```
