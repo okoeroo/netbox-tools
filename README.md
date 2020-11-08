@@ -68,8 +68,6 @@ acer_tablet 86400 IN CNAME acer_tablet_wlan0
 acer_tablet_wlan0 86400 IN A 192.168.1.67
 apps 86400 IN CNAME apps_eth0
 apps_eth0 86400 IN A 192.168.1.28
-bitcoin 86400 IN CNAME bitcoin_eth0
-bitcoin_eth0 86400 IN A 192.168.1.16
 c200 86400 IN CNAME c200_eth0
 c200_eth0 86400 IN A 192.168.1.46
 captain_marvel 86400 IN CNAME captain_marvel_wlan0
