@@ -41,9 +41,9 @@ dhcp-option=vrf_66_homelan_vlan_66,3,192.168.1.254  # Default Gateway
 dhcp-option=vrf_66_homelan_vlan_66,6,192.168.1.1  # Default DNS
 dhcp-range=vrf_66_homelan_vlan_66,192.168.1.100,192.168.1.199,255.255.255.0,600m
 
-dhcp-host=vrf_66_homelan_vlan_66,B8:27:EB:F8:82:6C,kpnpibox_eth0,192.168.1.1,90m
-dhcp-host=vrf_66_homelan_vlan_66,52:54:00:3B:9C:5B,unifi_eth0,192.168.1.3,90m
-dhcp-host=vrf_66_homelan_vlan_66,80:EE:73:B9:B0:74,mainport_mainbridge,192.168.1.4,90m
+dhcp-host=vrf_66_homelan_vlan_66,B8:27:EB:FF:FF:FF,kpnpibox_eth0,192.168.1.1,90m
+dhcp-host=vrf_66_homelan_vlan_66,52:54:00:FF:FF:FF,unifi_eth0,192.168.1.3,90m
+dhcp-host=vrf_66_homelan_vlan_66,80:EE:73:FF:FF:FF,mainport_mainbridge,192.168.1.4,90m
 ```
 
 ## PowerDNS Zonefile configuration
@@ -61,11 +61,11 @@ In addition, the associated device record is retrieved. The IP address which is 
 
 
 
-### Zonfile snippet
+### Zonefile snippet
 ```
 @ 86400 IN NS ns
-acer_tablet_lieke 86400 IN CNAME acer_tablet_lieke_wlan0
-acer_tablet_lieke_wlan0 86400 IN A 192.168.1.67
+acer_tablet 86400 IN CNAME acer_tablet_wlan0
+acer_tablet_wlan0 86400 IN A 192.168.1.67
 apps 86400 IN CNAME apps_eth0
 apps_eth0 86400 IN A 192.168.1.28
 bitcoin 86400 IN CNAME bitcoin_eth0
