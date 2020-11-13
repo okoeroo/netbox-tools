@@ -84,6 +84,12 @@ def argparsing():
                         help="Zonefile format to be consumed by Bind or PowerDNS.",
                         default=None,
                         type=str)
+    parser.add_argument("-zia", "--zonefile-in-addr",
+                        dest='zonefile_in_addr',
+                        help="Zonefile format to be consumed by Bind or PowerDNS, but specifically for the reverse lookups.",
+                        default=None,
+                        type=str)
+
     parser.add_argument("-rl", "--relativize",
                         dest='zonefile_relativize',
                         help="Create relativized names in the zonefile",
@@ -113,6 +119,7 @@ def argparsing():
     ctx['dhcp_authoritive']               = args.dhcp_authoritive
     ctx['dhcp_default_domain']            = args.dhcp_default_domain
     ctx['zonefile']                       = args.zonefile
+    ctx['zonefile_in_addr']               = args.zonefile_in_addr
     ctx['zonefile_relativize']            = args.zonefile_relativize
 
     ctx['zoneheader']         = args.zoneheader
@@ -569,20 +576,11 @@ def add_rr_to_zone(ctx, zone, rr_obj):
         if 'name' not in rr_obj or 'type' not in rr_obj or 'data' not in rr_obj:
             raise "rr_obj missing elements for A record"
 
-        print(rr_obj['name'])
         rdtype = dns.rdatatype._by_text.get(rr_obj['type'])
         rdataset = zone.find_rdataset(rr_obj['name'], rdtype=rdtype, create=True)
         rdata = dns.rdata.from_text(rdclass, rdtype, rr_obj['data'])
         rdataset.add(rdata, ttl=rr_obj['ttl'])
         return
-
-#            # Add PTR Resource Record
-#            rdtype = dns.rdatatype._by_text.get('PTR')
-#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
-#            rdata = dns.rdtypes.ANY.PTR.PTR(rdclass, rdtype,
-#                target = Name((rr.content.rstrip('.') + '.').split('.'))
-#            )
-#            rdataset.add(rdata, ttl=int(rr.ttl))
 
     # CNAME
     if rr_obj['type'] == 'CNAME': 
@@ -627,160 +625,6 @@ def add_rr_to_zone(ctx, zone, rr_obj):
                                  rr_obj['data'])
 
         rdataset.add(rdata, ttl=rr_obj['ttl'])
-#
-#def generate_zone_file(origin):
-#    """Generates a zone file.
-#     
-#    Accepts the zone origin as string (no trailing dot).
-#      
-#    Returns the contents of a zone file that contains all the resource records
-#    associated with the domain with the provided origin.
-#     
-#    """
-#    Domain = get_model('powerdns_manager', 'Domain')
-#    Record = get_model('powerdns_manager', 'Record')
-#     
-#    the_domain = Domain.objects.get(name__exact=origin)
-#    the_rrs = Record.objects.filter(domain=the_domain).order_by('-type')
-#     
-#    # Generate the zone file
-#     
-#    origin = Name((origin.rstrip('.') + '.').split('.'))
-#     
-#    # Create an empty dns.zone object.
-#    # We set check_origin=False because the zone contains no records.
-#    zone = dns.zone.from_text('', origin=origin, relativize=False, check_origin=False)
-#     
-#    rdclass = dns.rdataclass._by_text.get('IN')
-#     
-#    for rr in the_rrs:
-#         
-#        # Add trailing dot to rr.name
-#        record_name = rr.name.rstrip('.') + '.'
-#         
-#        if rr.type == 'SOA':
-#            # Add SOA Resource Record
-#             
-#            # SOA content:  primary hostmaster serial refresh retry expire default_ttl
-#            bits = rr.content.split()
-#            # Primary nameserver of SOA record
-#            primary = bits[0].rstrip('.') + '.'
-#            mname = Name(primary.split('.'))
-#            # Responsible hostmaster from SOA record
-#            hostmaster = bits[1].rstrip('.') + '.'
-#            rname = Name(hostmaster.split('.'))
-#             
-#            rdtype = dns.rdatatype._by_text.get('SOA')
-#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
-#            rdata = dns.rdtypes.ANY.SOA.SOA(rdclass, rdtype,
-#                mname = mname,
-#                rname = rname,
-#                serial = int(bits[2]),
-#                refresh = int(bits[3]),
-#                retry = int(bits[4]),
-#                expire = int(bits[5]),
-#                minimum = int(bits[6])
-#            )
-#            rdataset.add(rdata, ttl=int(rr.ttl))
-#         
-#        elif rr.type == 'NS':
-#            # Add NS Resource Record
-#            rdtype = dns.rdatatype._by_text.get('NS')
-#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
-#            rdata = dns.rdtypes.ANY.NS.NS(rdclass, rdtype,
-#                target = Name((rr.content.rstrip('.') + '.').split('.'))
-#            )
-#            rdataset.add(rdata, ttl=int(rr.ttl))
-#         
-#        elif rr.type == 'MX':
-#            # Add MX Resource Record
-#            rdtype = dns.rdatatype._by_text.get('MX')
-#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
-#            rdata = dns.rdtypes.ANY.MX.MX(rdclass, rdtype,
-#                preference = int(rr.prio),
-#                exchange = Name((rr.content.rstrip('.') + '.').split('.'))
-#            )
-#            rdataset.add(rdata, ttl=int(rr.ttl))
-#         
-#        elif rr.type == 'TXT':
-#            # Add TXT Resource Record
-#            rdtype = dns.rdatatype._by_text.get('TXT')
-#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
-#            rdata = dns.rdtypes.ANY.TXT.TXT(rdclass, rdtype,
-#                strings = [rr.content.strip('"')]
-#            )
-#            rdataset.add(rdata, ttl=int(rr.ttl))
-#         
-#        elif rr.type == 'CNAME':
-#            # Add CNAME Resource Record
-#            rdtype = dns.rdatatype._by_text.get('CNAME')
-#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
-#            rdata = dns.rdtypes.ANY.CNAME.CNAME(rdclass, rdtype,
-#                target = Name((rr.content.rstrip('.') + '.').split('.'))
-#            )
-#            rdataset.add(rdata, ttl=int(rr.ttl))
-#         
-#        elif rr.type == 'A':
-#            # Add A Resource Record
-#            rdtype = dns.rdatatype._by_text.get('A')
-#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
-#            rdata = dns.rdtypes.IN.A.A(rdclass, rdtype,
-#                address = rr.content
-#            )
-#            rdataset.add(rdata, ttl=int(rr.ttl))
-#         
-#        elif rr.type == 'AAAA':
-#            # Add AAAA Resource Record
-#            rdtype = dns.rdatatype._by_text.get('AAAA')
-#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
-#            rdata = dns.rdtypes.IN.AAAA.AAAA(rdclass, rdtype,
-#                address = rr.content
-#            )
-#            rdataset.add(rdata, ttl=int(rr.ttl))
-#         
-#        elif rr.type == 'SPF':
-#            # Add SPF Resource Record
-#            rdtype = dns.rdatatype._by_text.get('SPF')
-#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
-#            rdata = dns.rdtypes.ANY.SPF.SPF(rdclass, rdtype,
-#                strings = [rr.content.strip('"')]
-#            )
-#            rdataset.add(rdata, ttl=int(rr.ttl))
-#         
-#        elif rr.type == 'PTR':
-#            # Add PTR Resource Record
-#            rdtype = dns.rdatatype._by_text.get('PTR')
-#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
-#            rdata = dns.rdtypes.ANY.PTR.PTR(rdclass, rdtype,
-#                target = Name((rr.content.rstrip('.') + '.').split('.'))
-#            )
-#            rdataset.add(rdata, ttl=int(rr.ttl))
-#         
-#        elif rr.type == 'SRV':
-#            # Add SRV Resource Record
-#             
-#            # weight port target
-#            weight, port, target = rr.content.split()
-#             
-#            rdtype = dns.rdatatype._by_text.get('SRV')
-#            rdataset = zone.find_rdataset(record_name, rdtype=rdtype, create=True)
-#            rdata = dns.rdtypes.IN.SRV.SRV(rdclass, rdtype,
-#                priority = int(rr.prio),
-#                weight = int(weight),
-#                port = int(port),
-#                target = Name((target.rstrip('.') + '.').split('.'))
-#            )
-#            rdataset.add(rdata, ttl=int(rr.ttl))
-#             
-#     
-#    # Export text (from the source code of http://www.dnspython.org/docs/1.10.0/html/dns.zone.Zone-class.html#to_file)
-#    EOL = '\n'
-#    f = StringIO.StringIO()
-#    f.write('$ORIGIN %s%s' % (origin, EOL))
-#    zone.to_file(f, sorted=True, relativize=False, nl=EOL)
-#    data = f.getvalue()
-#    f.close()
-#    return data
 
 
 ## Based on the mac address fetch a device.
@@ -806,7 +650,7 @@ def extract_primary_ip_from_device_obj(device):
         plain_ip_address = device['results'][0]['primary_ip']['address'].split('/')[0]
 
 
-def powerdns_recursor_zoneing(ctx):
+def powerdns_recursor_zonefile(ctx):
     zone = dns.zone.Zone(ctx['dhcp_default_domain'], relativize=False)
 
     rr_obj = {}
@@ -936,13 +780,111 @@ def powerdns_recursor_zoneing(ctx):
     return
 
 
+### WORK IN PROGRESS 192.168.x.x only
+def powerdns_recursor_zoneing_reverse_lookups(ctx):
+    print(ctx['zonefile_in_addr'])
+    ### ctx['zonefile_in_addr']
+
+    #ipam/ip-addresses/
+    zone_name = "168.192.in-addr.arpa"
+    zone = dns.zone.Zone(dns_canonicalize(zone_name), relativize=False)
+
+    rr_obj = {}
+    rr_obj['type']    = 'SOA'
+    rr_obj['name']    = dns_canonicalize(zone_name)
+    rr_obj['mname']   = dns_canonicalize("ns." + ctx['dhcp_default_domain'])
+    rr_obj['rname']   = dns_canonicalize('hostmaster.' + ctx['dhcp_default_domain'])
+    rr_obj['serial']  = 7
+    rr_obj['refresh'] = 86400
+    rr_obj['retry']   = 7200
+    rr_obj['expire']  = 3600000
+    rr_obj['minimum'] = 1800
+
+    add_rr_to_zone(ctx, zone, rr_obj)
+
+    rr_obj = {}
+    rr_obj['type'] = 'NS'
+    rr_obj['name'] = '@'
+    rr_obj['data'] = dns_canonicalize('ns.' + ctx['dhcp_default_domain'])
+
+    add_rr_to_zone(ctx, zone, rr_obj)
+
+
+    # Query for prefixes and ranges
+    q = query_netbox(ctx, "ipam/ip-addresses/")
+
+    for ip_addr_obj in q['results']:
+        tupple = {}
+
+        # Skip non-IPv4
+        if ip_addr_obj['family']['value'] != 4:
+            continue
+
+        ## HACK
+        if not ip_addr_obj['address'].startswith('192.168'):
+            print(ip_addr_obj['address'], "not in 192.168")
+            continue
+
+        # No interface? Skip
+        if 'assigned_object' not in ip_addr_obj:
+            print("No interface assigned to", ip_addr_obj['address'])
+            continue
+
+
+        # Assemble the tupple
+        tupple['ip_addr'] = ip_addr_obj['address']
+
+        if 'device' in ip_addr_obj['assigned_object']:
+            tupple['host_name'] = ip_addr_obj['assigned_object']['device']['name']
+        elif 'virtual_machine' in ip_addr_obj['assigned_object']:
+            tupple['host_name'] = ip_addr_obj['assigned_object']['virtual_machine']['name']
+
+        tupple['interface_name'] = ip_addr_obj['assigned_object']['name']
+
+        ip_addr_interface = ipaddress.IPv4Interface(tupple['ip_addr'])
+        tupple['rev_ip_addr'] = ipaddress.ip_address(ip_addr_interface.ip).reverse_pointer
+
+        # Debug
+        #pp(tupple)
+
+        # Add the PTR record for each interface
+        # 131.28.12.202.in-addr.arpa. IN PTR svc00.apnic.net.
+        rr_obj = {}
+        rr_obj['type'] = 'PTR'
+
+        # Strip the zone from the name
+        lesser = 0 - len(zone_name) - 1
+        rr_obj['name'] = tupple['rev_ip_addr'][:lesser]
+        rr_obj['data'] = dns_canonicalize(normalize_name(tupple['host_name'] + "_" + \
+                                                         tupple['interface_name'] + "." + \
+                                                         ctx['dhcp_default_domain']))
+
+        add_rr_to_zone(ctx, zone, rr_obj)
+
+
+    # Write zonefile
+    f = open(ctx['zonefile_in_addr'], 'w')
+    zone.to_file(f, relativize=False)
+
+    f.close()
+    return
+
+
+
 ### Main
 def main(ctx):
-    print("Netbox to DNSMasq DHCP config")
-    netbox_to_dnsmasq_dhcp_config(ctx)
+    if 'dnsmasq_dhcp_output_file' in ctx and ctx['dnsmasq_dhcp_output_file'] is not None:
+        print("Netbox to DNSMasq DHCP config")
+        netbox_to_dnsmasq_dhcp_config(ctx)
 
-    print("Netbox to DNS Zonefile")
-    powerdns_recursor_zoneing(ctx)
+    if 'zonefile' in ctx and ctx['zonefile'] is not None:
+        print("Netbox to DNS Zonefile")
+        powerdns_recursor_zonefile(ctx)
+
+    if 'zonefile_in_addr' in ctx and ctx['zonefile_in_addr'] is not None:
+        print("Netbox to DNS Zonefile for reverse lookups")
+        powerdns_recursor_zoneing_reverse_lookups(ctx)
+
 
 ### Start up
 if __name__ == "__main__":
