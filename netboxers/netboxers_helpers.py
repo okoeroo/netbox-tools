@@ -105,6 +105,86 @@ def query_netbox(ctx, query, req_parameters=None):
     return response
 
 
+def add_rr_to_zone(ctx, zone, rr_obj):
+    if 'name' not in rr_obj:
+        raise "rr_obj missing name"
+
+    if 'type' not in rr_obj:
+        raise "rr_obj missing type"
+
+    if 'ttl' not in rr_obj:
+        rr_obj['ttl'] = 86400
+
+    rdclass = dns.rdataclass._by_text.get('IN')
+
+    # A
+    if rr_obj['type'] == 'A': 
+        if 'name' not in rr_obj or 'type' not in rr_obj or 'data' not in rr_obj:
+            raise "rr_obj missing elements for A record"
+
+        rdtype = dns.rdatatype._by_text.get(rr_obj['type'])
+        rdataset = zone.find_rdataset(rr_obj['name'], rdtype=rdtype, create=True)
+        rdata = dns.rdata.from_text(rdclass, rdtype, rr_obj['data'])
+        rdataset.add(rdata, ttl=rr_obj['ttl'])
+        return
+
+    # PTR
+    if rr_obj['type'] == 'PTR': 
+        if 'name' not in rr_obj or 'type' not in rr_obj or 'data' not in rr_obj:
+            raise "rr_obj missing elements for A record"
+
+        rdtype = dns.rdatatype._by_text.get(rr_obj['type'])
+        rdataset = zone.find_rdataset(rr_obj['name'], rdtype=rdtype, create=True)
+        rdata = dns.rdata.from_text(rdclass, rdtype, rr_obj['data'])
+        rdataset.add(rdata, ttl=rr_obj['ttl'])
+        return
+
+    # CNAME
+    if rr_obj['type'] == 'CNAME': 
+        if 'name' not in rr_obj or 'type' not in rr_obj or 'data' not in rr_obj:
+            raise "rr_obj missing elements for CNAME record"
+
+        rdtype = dns.rdatatype._by_text.get(rr_obj['type'])
+        rdataset = zone.find_rdataset(rr_obj['name'], rdtype=rdtype, create=True)
+        rdata = dns.rdata.from_text(rdclass, rdtype, rr_obj['data'])
+        rdataset.add(rdata, ttl=rr_obj['ttl'])
+        return
+
+    # SOA
+    if rr_obj['type'] == 'SOA':
+        if 'name' not in rr_obj or 'type' not in rr_obj or \
+            'mname' not in rr_obj or 'rname' not in rr_obj:
+            raise "rr_obj missing elements for SOA record"
+
+        rdtype = dns.rdatatype._by_text.get(rr_obj['type'])
+        rdataset = zone.find_rdataset(rr_obj['name'], rdtype=rdtype, create=True)
+        rdata = dns.rdtypes.ANY.SOA.SOA(rdclass, rdtype,
+                    mname = dns.name.Name(rr_obj['mname'].split('.')),
+                    rname = dns.name.Name(rr_obj['rname'].split('.')),
+                    serial = rr_obj['serial'],
+                    refresh = rr_obj['refresh'],
+                    retry = rr_obj['retry'],
+                    expire = rr_obj['expire'],
+                    minimum = rr_obj['minimum']
+        )
+        rdataset.add(rdata, ttl=rr_obj['ttl'])
+        return
+
+    # NS
+    if rr_obj['type'] == 'NS':
+        rdtype = dns.rdatatype._by_text.get(rr_obj['type'])
+        rdataset = zone.find_rdataset(rr_obj['name'], rdtype=rdtype, create=True)
+
+        if rr_obj['data'][-1:] != '.':
+             rr_obj['data'] = rr_obj['data'] + '.'
+
+        rdata = dns.rdata.from_text(dns.rdataclass.IN, dns.rdatatype.NS,
+                                 rr_obj['data'])
+
+        rdataset.add(rdata, ttl=rr_obj['ttl'])
+
+
+
 ######### begin of dead code
 
 def put_zonefile(ctx):
