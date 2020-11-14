@@ -111,6 +111,30 @@ netbox                          A       192.168.203.11
 cloud                           CNAME   owncloud.koeroo.local.
 ```
 
+## Power
+
+
+### Zonefile for reverse lookup
+```
+168.192.in-addr.arpa. 86400 IN NS ns.koeroo.local.
+1.1.168.192.in-addr.arpa. 86400 IN PTR kpnpibox_eth0.koeroo.local.
+10.1.168.192.in-addr.arpa. 86400 IN PTR storagevault_eth0.koeroo.local.
+30.1.168.192.in-addr.arpa. 86400 IN PTR seccubus_eth0.koeroo.local.
+32.1.168.192.in-addr.arpa. 86400 IN PTR syslog_eth0.koeroo.local.
+33.1.168.192.in-addr.arpa. 86400 IN PTR grafana_eth0.koeroo.local.
+34.1.168.192.in-addr.arpa. 86400 IN PTR sftp_eth0.koeroo.local.
+36.1.168.192.in-addr.arpa. 86400 IN PTR mail_eth0.koeroo.local.
+39.1.168.192.in-addr.arpa. 86400 IN PTR magicwand_eth0.koeroo.local.
+4.1.168.192.in-addr.arpa. 86400 IN PTR mainport_mainbridge.koeroo.local.
+5.1.168.192.in-addr.arpa. 86400 IN PTR deadpool_lan1.koeroo.local.
+56.1.168.192.in-addr.arpa. 86400 IN PTR thor_wlan0.koeroo.local.
+2.204.168.192.in-addr.arpa. 86400 IN PTR helper_enp10s0.koeroo.local.
+99.204.168.192.in-addr.arpa. 86400 IN PTR iothost_eth0.koeroo.local.
+168.192.in-addr.arpa. 86400 IN SOA ns.koeroo.local. hostmaster.koeroo.local. 7 86400 7200 3600000 1800
+```
+
+
+
 ## Usage
 ```
 usage: netbox-2-dnsmasq.py [-h] [-v] [-k AUTHKEY]
@@ -121,8 +145,9 @@ usage: netbox-2-dnsmasq.py [-h] [-v] [-k AUTHKEY]
                            [-min DHCP_HOST_RANGE_OFFSET_MIN]
                            [-max DHCP_HOST_RANGE_OFFSET_MAX]
                            [-lf DHCP_LEASE_FILE] [-da]
-                           [-ddd DHCP_DEFAULT_DOMAIN] [-z ZONEFILE] [-rl]
-                           [-e ZONEHEADER] [-f ZONEFOOTER]
+                           [-ddd DHCP_DEFAULT_DOMAIN] [-z ZONEFILE]
+                           [-zia ZONEFILE_IN_ADDR] [-rl] [-e ZONEHEADER]
+                           [-f ZONEFOOTER]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -149,6 +174,9 @@ optional arguments:
                         DHCP Default Domain.
   -z ZONEFILE, --zonefile ZONEFILE
                         Zonefile format to be consumed by Bind or PowerDNS.
+  -zia ZONEFILE_IN_ADDR, --zonefile-in-addr ZONEFILE_IN_ADDR
+                        Zonefile format to be consumed by Bind or PowerDNS,
+                        but specifically for the reverse lookups.
   -rl, --relativize     Create relativized names in the zonefile
   -e ZONEHEADER, --zoneheader ZONEHEADER
                         Zonefile header template.
@@ -173,7 +201,8 @@ echo "Running netbox-2-dnsmasq.py"
     --dhcp-default-domain koeroo.local \
     --zonefile /tmp/generated-zonefile \
     --zoneheader /home/pi/config/dns/zonefiles/templates/koeroo.local.header \
-    --zonefooter /home/pi/config/dns/zonefiles/templates/koeroo.local.footer
+    --zonefooter /home/pi/config/dns/zonefiles/templates/koeroo.local.footer \
+    --zonefile-in-addr /tmp/generated-168.192.in-addr.arpa.local
 
 if [ $? -ne 0 ]; then
     echo "Error!"
@@ -195,7 +224,10 @@ echo "Backup running zonefile"
 sudo cp -v /etc/powerdns/zonefiles/koeroo.local        /etc/powerdns/zonefiles/koeroo.local.backup
 sudo cp -v /tmp/generated-zonefile                     /etc/powerdns/zonefiles/koeroo.local
      cp -v /tmp/generated-zonefile                     /home/pi/config/dns/powerdns/zonefiles/koeroo.local
+sudo cp -v /tmp/generated-168.192.in-addr.arpa.local   /etc/powerdns/zonefiles/168.192.in-addr.arpa.local
 
+### Assuming both koeroo.local and 168.192.in-addr.arpa.local are configured in
+### recursor.conf to be loaded for the zone koeroo.local. and 168.192.in-addr.arpa.
 echo sudo rec_control reload-zones
 sudo rec_control reload-zones
 ```
