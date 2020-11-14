@@ -18,170 +18,10 @@ import dns.zone
 import dns.name
 import dns.rdtypes
 
-from netboxers import netboxers
+#from netboxers import netboxers
 from netboxers import netboxers_helpers
 from netboxers import netboxers_cli
 
-
-
-def get_uuid_value(value):
-    m = re.search("UUID:(.*)$", value)
-    if m:
-        return m.group(1)
-    else:
-        return None
-
-def is_lease_time(value):
-    m = re.search("^[0-9]+[hms]", value)
-    if m:
-        return True
-    else:
-        return False
-
-def get_lease_time(value):
-    m = re.search("^[0-9]+[hms]", value)
-    if m:
-        return m.group(0)
-    else:
-        return None
-
-def pp(obj):
-    pp = pprint.PrettyPrinter(indent=4)
-    pp.pprint(obj)
-
-
-def dns_canonicalize(s):
-    if not s.endswith('.'):
-        return s + '.'
-    else:
-        return
-
-
-def is_valid_macaddr802(value):
-    allowed = re.compile(r"""
-                         (
-                             ^([0-9A-F]{2}[-]){5}([0-9A-F]{2})$
-                            |^([0-9A-F]{2}[:]){5}([0-9A-F]{2})$
-                         )
-                         """,
-                         re.VERBOSE|re.IGNORECASE)
-
-    if allowed.match(value) is None:
-        return False
-    else:
-        return True
-
-def load_file_into_array(filename, emptylines=True):
-    if emptylines:
-        return open(filename, "r", encoding='utf-8').read().splitlines()
-    else:
-        return filter(None, open(filename, "r", encoding='utf-8').read().splitlines())
-
-def is_ipaddress(to_check):
-    try:
-        ipaddress.ip_address(to_check)
-        return True
-    except Exception as err:
-        return False
-
-
-def put_zonefile(ctx):
-    header = open(ctx['zoneheader']).read()
-    footer = open(ctx['zonefooter']).read()
-
-    # Write header to buffer
-    output = header
-
-    longest_hostname = 0
-    for dhcp_host_tuple in ctx['dhcp-hosts']:
-        if len(dhcp_host_tuple['hostname']) > longest_hostname:
-            longest_hostname = len(dhcp_host_tuple['hostname'])
-
-    for dhcp_host_tuple in ctx['dhcp-hosts']:
-        w_len = longest_hostname - len(dhcp_host_tuple['hostname']) + 4
-        output = output + dhcp_host_tuple['hostname'].lower() + " " * w_len + "A" + "  " + dhcp_host_tuple['ipaddress']
-        output = output + "\n"
-
-    # Write footer to output buffer
-    output = output + footer
-
-    if ctx['verbose'] == True:
-        print(output)
-
-    f = open(ctx['zonefile'], 'w')
-    f.write(output)
-    f.close()
-
-
-def normalize_name(name):
-    return name.lower().replace(" ", "_").replace("-", "_").replace("\"", "").replace("\'", "")
-
-def strip_query(ctx, query):
-    # Pattern is base_url/api/query, all double bits should be stripped 
-
-    if query.startswith(ctx['netbox_base_url'] + '/api/'):
-        return query[len(ctx['netbox_base_url'] + '/api/'):]
-
-    return query
-
-### 
-def query_netbox_call(ctx, query, req_parameters=None):
-    req_headers = {}
-    req_headers['Authorization'] = " ".join(["Token", ctx['authkey']])
-    req_headers['Content-Type'] = "application/json"
-    req_headers['Accept'] = "application/json; indent=4"
-
-    query_stripped = strip_query(ctx, query)
-
-    if ctx['verbose']:
-        print(query_stripped)
-
-    get_req = requests.get('{}/api/{}'.format(ctx['netbox_base_url'], query_stripped),
-                           timeout=3,
-                           headers=req_headers,
-                           params=req_parameters)
-    get_req.raise_for_status()
-
-    if ctx['verbose']:
-        print(get_req.text)
-
-
-    # Results retrieved
-    return get_req.json()
-
-def query_netbox(ctx, query, req_parameters=None):
-
-    # Results retrieved
-    response = query_netbox_call(ctx, query, req_parameters)
-
-    # Merge response in memory
-    req_next = response # setups for loop
-    while 'next' in req_next and req_next['next'] and len(req_next['next']) > 0:
-        res_next = query_netbox_call(ctx, req_next['next'], req_parameters)
-
-        if ctx['verbose']:
-            print(res_next)
-
-        for i in res_next['results']:
-            response['results'].append(i)
-
-        req_next = res_next
-
-    return response
-
-
-def write_to_ddo_fh(ctx, s):
-    # Truncate file
-    if s is None and ctx['dnsmasq_dhcp_output_file'] is not None:
-        open(ctx['dnsmasq_dhcp_output_file'], 'w').close()
-        return
-
-    # Print or write
-    if ctx['dnsmasq_dhcp_output_file'] is None:
-        print(s)
-    else:
-        with open(ctx['dnsmasq_dhcp_output_file'], 'a') as the_file:
-            the_file.write(s + os.linesep)
 
 
 # Default gateway from the VRF
@@ -191,10 +31,10 @@ def get_net_default_gateway_from_vrf(ctx, vrf_id):
     parameters = {}
     parameters['vrf_id'] = vrf_id
     parameters['tag']    = 'net_default_gateway'
-    q_ip_addrs = query_netbox(ctx, "ipam/ip-addresses/", parameters)
+    q_ip_addrs = netboxers_helpers.query_netbox(ctx, "ipam/ip-addresses/", parameters)
 
     if q_ip_addrs['count'] == 0:
-        write_to_ddo_fh(ctx, "# No default gateway available")
+        netboxers_helpers.write_to_ddo_fh(ctx, "# No default gateway available")
         return None
     else:
         return q_ip_addrs['results'][0]
@@ -226,7 +66,7 @@ def get_network_address_from_ipaddresses_obj(ip_addr_obj):
 def get_macaddress_from_ipaddresses_obj(ctx, ip_addr_obj):
 
     # Get MAC from interface object
-    interface_obj = query_netbox(ctx, ip_addr_obj['assigned_object']['url'])
+    interface_obj = netboxers_helpers.query_netbox(ctx, ip_addr_obj['assigned_object']['url'])
     return interface_obj['mac_address']
 
 
@@ -244,7 +84,7 @@ def get_hostname_from_ipaddresses_obj(ip_addr_obj):
 
     except Exception as e:
         print(str(e))
-        pp(ip_addr_obj)
+        netboxers_helpers.pp(ip_addr_obj)
         sys.exit(1)
 
 
@@ -264,7 +104,7 @@ def assemble_dhcp_host_dict_from_ip_addr_obj(ctx, ip_addr_obj):
     res_tup['mac_address'] = get_macaddress_from_ipaddresses_obj(ctx, ip_addr_obj)
 
     res_tup['hostname'] = get_hostname_from_ipaddresses_obj(ip_addr_obj)
-    res_tup['normalized_hostname'] = normalize_name(res_tup['hostname'])
+    res_tup['normalized_hostname'] = netboxers_helpers.normalize_name(res_tup['hostname'])
 
     res_tup['interface_name'] = get_interface_name_from_ipaddresses_obj(ip_addr_obj)
     res_tup['host_iface'] = res_tup['normalized_hostname'] + "_" + res_tup['interface_name']
@@ -279,7 +119,7 @@ def get_vrf_vlan_name_from_prefix_obj(prefix_obj):
 def get_dhcp_host_dict_from_vrf(ctx, vrf_id):
     parameters = {}
     parameters['vrf_id'] = vrf_id
-    q_ip_addrs = query_netbox(ctx, "ipam/ip-addresses/", parameters)
+    q_ip_addrs = netboxers_helpers.query_netbox(ctx, "ipam/ip-addresses/", parameters)
 
     if q_ip_addrs['count'] == 0:
         return None
@@ -303,18 +143,18 @@ def get_dhcp_host_dict_from_vrf(ctx, vrf_id):
 
 def netbox_to_dnsmasq_dhcp_config(ctx):
     # Truncate and open file cleanly
-    write_to_ddo_fh(ctx, None)
+    netboxers_helpers.write_to_ddo_fh(ctx, None)
 
     # Generic settings
-    write_to_ddo_fh(ctx, "dhcp-leasefile=" + ctx['dhcp_lease_file'])
+    netboxers_helpers.write_to_ddo_fh(ctx, "dhcp-leasefile=" + ctx['dhcp_lease_file'])
 
     if ctx['dhcp_authoritive']:
-        write_to_ddo_fh(ctx, "dhcp-authoritative")
+        netboxers_helpers.write_to_ddo_fh(ctx, "dhcp-authoritative")
 
-    write_to_ddo_fh(ctx, "domain=" + ctx['dhcp_default_domain'])
+    netboxers_helpers.write_to_ddo_fh(ctx, "domain=" + ctx['dhcp_default_domain'])
 
     # Get prefixes
-    prefixes = query_netbox(ctx, "ipam/prefixes/")
+    prefixes = netboxers_helpers.query_netbox(ctx, "ipam/prefixes/")
 
     if prefixes['count'] == 0:
         print("No prefixes found to complete")
@@ -358,8 +198,8 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
                                      "Prefix: ",
                                      prefix_obj['prefix']])
         # Print comment/header
-        write_to_ddo_fh(ctx, dnsmasq_dhcp)
-        write_to_ddo_fh(ctx, "")
+        netboxers_helpers.write_to_ddo_fh(ctx, dnsmasq_dhcp)
+        netboxers_helpers.write_to_ddo_fh(ctx, "")
 
         # Get default gateway from the VRF based on a tag
         default_gateway_ip_addr_obj = get_net_default_gateway_from_vrf(ctx, prefix_obj['vrf']['id'])
@@ -369,7 +209,7 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
 
             # Write default gateway
             if default_gateway_ip_addr is not None:
-                write_to_ddo_fh(ctx, "dhcp-option=" + \
+                netboxers_helpers.write_to_ddo_fh(ctx, "dhcp-option=" + \
                                      ",".join([get_vrf_vlan_name_from_prefix_obj(prefix_obj),
                                                "3", # Default gateway
                                                str(default_gateway_ip_addr)
@@ -382,7 +222,7 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
 
                 # Write DNS server
                 if default_dnsname_ip_addr is not None:
-                    write_to_ddo_fh(ctx, "dhcp-option=" + \
+                    netboxers_helpers.write_to_ddo_fh(ctx, "dhcp-option=" + \
                                          ",".join([get_vrf_vlan_name_from_prefix_obj(prefix_obj),
                                                    "6", # Default DNS
                                                    str(default_dnsname_ip_addr)
@@ -391,7 +231,7 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
 
         # Print dhcp-range
         ip_network = ipaddress.ip_network(prefix_obj['prefix'])
-        write_to_ddo_fh(ctx, "dhcp-range=" + \
+        netboxers_helpers.write_to_ddo_fh(ctx, "dhcp-range=" + \
                              ",".join([get_vrf_vlan_name_from_prefix_obj(prefix_obj),
                                      str(ip_network.network_address + \
                                          ctx['dhcp_host_range_offset_min']),
@@ -401,7 +241,7 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
                                      ctx['dhcp_default_lease_time_range']
                                     ]))
 
-        write_to_ddo_fh(ctx, "")
+        netboxers_helpers.write_to_ddo_fh(ctx, "")
 
 
         # Query all IP addresses in the VRF. From each, fetch the associated interface and its MAC
@@ -410,7 +250,7 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
 
         for tup in dhcp_host_tuples:
             # dhcp-host=eth0,a0:3e:6b:aa:6e:fc,Acer_Wit_Lieke,192.168.1.67,600m
-            write_to_ddo_fh(ctx, "dhcp-host=" +
+            netboxers_helpers.write_to_ddo_fh(ctx, "dhcp-host=" +
                                  ",".join([get_vrf_vlan_name_from_prefix_obj(prefix_obj),
                                            tup['mac_address'],
                                            tup['host_iface'],
@@ -505,9 +345,9 @@ def fetch_devices_from_mac_address(mac_address):
     parameters['mac_address'] = mac_address
 
     # Device or VM?
-    devices = query_netbox(ctx, "dcim/devices/", parameters)
+    devices = netboxers_helpers.query_netbox(ctx, "dcim/devices/", parameters)
     if devices['count'] == 0:
-        devices = query_netbox(ctx, "virtualization/virtual-machines/", parameters)
+        devices = netboxers_helpers.query_netbox(ctx, "virtualization/virtual-machines/", parameters)
         if devices['count'] == 0:
             # Not in Database...
             return None
@@ -526,8 +366,8 @@ def powerdns_recursor_zonefile(ctx):
 
     rr_obj = {}
     rr_obj['type']    = 'SOA'
-    rr_obj['name']    = dns_canonicalize(ctx['dhcp_default_domain'])
-    rr_obj['mname']   = dns_canonicalize('ns.' + ctx['dhcp_default_domain'])
+    rr_obj['name']    = netboxers_helpers.dns_canonicalize(ctx['dhcp_default_domain'])
+    rr_obj['mname']   = netboxers_helpers.dns_canonicalize('ns.' + ctx['dhcp_default_domain'])
     rr_obj['rname']   = 'hostmaster.' + ctx['dhcp_default_domain']
     rr_obj['serial']  = 7
     rr_obj['refresh'] = 86400
@@ -540,13 +380,13 @@ def powerdns_recursor_zonefile(ctx):
     rr_obj = {}
     rr_obj['type'] = 'NS'
     rr_obj['name'] = '@'
-    rr_obj['data'] = dns_canonicalize('ns.' + ctx['dhcp_default_domain'])
+    rr_obj['data'] = netboxers_helpers.dns_canonicalize('ns.' + ctx['dhcp_default_domain'])
 
     add_rr_to_zone(ctx, zone, rr_obj)
 
 
     # Query for prefixes and ranges
-    q = query_netbox(ctx, "ipam/prefixes/")
+    q = netboxers_helpers.query_netbox(ctx, "ipam/prefixes/")
 
     for prefix_obj in q['results']:
 
@@ -570,7 +410,7 @@ def powerdns_recursor_zonefile(ctx):
             # Add the A record for each interface
             rr_obj = {}
             rr_obj['type'] = 'A'
-            rr_obj['name'] = normalize_name(tupple['hostname'] + "_" + \
+            rr_obj['name'] = netboxers_helpers.normalize_name(tupple['hostname'] + "_" + \
                                             tupple['interface_name'])
             rr_obj['data'] = str(tupple['ip_addr'])
 
@@ -582,7 +422,7 @@ def powerdns_recursor_zonefile(ctx):
 #            rr_obj = {}
 #            rr_obj['type'] = 'PTR'
 #            rr_obj['name'] = ipaddress.ip_address(str(tupple['ip_addr'])).reverse_pointer
-#            rr_obj['data'] = dns_canonicalize(normalize_name(tupple['host_name'] + "_" + \
+#            rr_obj['data'] = netboxers_helpers.dns_canonicalize(netboxers_helpers.normalize_name(tupple['host_name'] + "_" + \
 #                                                             tupple['interface_name'] + "." + \
 #                                                             ctx['dhcp_default_domain']))
 #
@@ -619,12 +459,12 @@ def powerdns_recursor_zonefile(ctx):
                 # Check: is it equal to the current record?
                 if tupple['ip_addr'] == plain_ip_address:
 
-                    rr_obj['name'] = normalize_name(tupple['hostname'] + "_" + \
+                    rr_obj['name'] = netboxers_helpers.normalize_name(tupple['hostname'] + "_" + \
                                                     tupple['interface_name'])
                     rr_obj = {}
                     rr_obj['type'] = 'CNAME'
-                    rr_obj['name'] = normalize_name(tupple['hostname'])
-                    rr_obj['data'] = dns_canonicalize(normalize_name(tupple['hostname'] + "_" + \
+                    rr_obj['name'] = netboxers_helpers.normalize_name(tupple['hostname'])
+                    rr_obj['data'] = netboxers_helpers.dns_canonicalize(netboxers_helpers.normalize_name(tupple['hostname'] + "_" + \
                                                                      tupple['interface_name'] + \
                                                                      "." + \
                                                                      ctx['dhcp_default_domain'])
@@ -658,13 +498,13 @@ def powerdns_recursor_zoneing_reverse_lookups(ctx):
 
     #ipam/ip-addresses/
     zone_name = "168.192.in-addr.arpa"
-    zone = dns.zone.Zone(dns_canonicalize(zone_name), relativize=False)
+    zone = dns.zone.Zone(netboxers_helpers.dns_canonicalize(zone_name), relativize=False)
 
     rr_obj = {}
     rr_obj['type']    = 'SOA'
-    rr_obj['name']    = dns_canonicalize(zone_name)
-    rr_obj['mname']   = dns_canonicalize("ns." + ctx['dhcp_default_domain'])
-    rr_obj['rname']   = dns_canonicalize('hostmaster.' + ctx['dhcp_default_domain'])
+    rr_obj['name']    = netboxers_helpers.dns_canonicalize(zone_name)
+    rr_obj['mname']   = netboxers_helpers.dns_canonicalize("ns." + ctx['dhcp_default_domain'])
+    rr_obj['rname']   = netboxers_helpers.dns_canonicalize('hostmaster.' + ctx['dhcp_default_domain'])
     rr_obj['serial']  = 7
     rr_obj['refresh'] = 86400
     rr_obj['retry']   = 7200
@@ -676,13 +516,13 @@ def powerdns_recursor_zoneing_reverse_lookups(ctx):
     rr_obj = {}
     rr_obj['type'] = 'NS'
     rr_obj['name'] = '@'
-    rr_obj['data'] = dns_canonicalize('ns.' + ctx['dhcp_default_domain'])
+    rr_obj['data'] = netboxers_helpers.dns_canonicalize('ns.' + ctx['dhcp_default_domain'])
 
     add_rr_to_zone(ctx, zone, rr_obj)
 
 
     # Query for prefixes and ranges
-    q = query_netbox(ctx, "ipam/ip-addresses/")
+    q = netboxers_helpers.query_netbox(ctx, "ipam/ip-addresses/")
 
     for ip_addr_obj in q['results']:
         tupple = {}
@@ -716,7 +556,7 @@ def powerdns_recursor_zoneing_reverse_lookups(ctx):
         tupple['rev_ip_addr'] = ipaddress.ip_address(ip_addr_interface.ip).reverse_pointer
 
         # Debug
-        #pp(tupple)
+        #netboxers_helpers.pp(tupple)
 
         # Add the PTR record for each interface
         # 131.28.12.202.in-addr.arpa. IN PTR svc00.apnic.net.
@@ -726,7 +566,7 @@ def powerdns_recursor_zoneing_reverse_lookups(ctx):
         # Strip the zone from the name
         lesser = 0 - len(zone_name) - 1
         rr_obj['name'] = tupple['rev_ip_addr'][:lesser]
-        rr_obj['data'] = dns_canonicalize(normalize_name(tupple['host_name'] + "_" + \
+        rr_obj['data'] = netboxers_helpers.dns_canonicalize(netboxers_helpers.normalize_name(tupple['host_name'] + "_" + \
                                                          tupple['interface_name'] + "." + \
                                                          ctx['dhcp_default_domain']))
 
