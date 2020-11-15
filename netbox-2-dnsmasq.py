@@ -25,9 +25,6 @@ from netboxers import netboxers_queries
 
 
 class DNSMasq_DHCP_Generic_Switchable:
-    name    = None
-    value   = None
-
     def __init__(self, name, value):
         self.name = name
         self.value = value
@@ -39,49 +36,168 @@ class DNSMasq_DHCP_Generic_Switchable:
             return self.name + "=" + self.value
 
 class DNSMasq_DHCP_Option:
-    option = None
-    value = None
-
     def __init__(self, option, value):
+        scope = None
         self.option = option
         self.value = value
 
-class DNSMasq_DHCP_Range:
-    range_min = None
-    range_max = None
-    netmask = None
-    lease_time = None
+    def __init__(self, scope, option, value):
+        self.scope = scope
+        self.option = option
+        self.value = value
 
+    def get_scope(self):
+        return self.scope
+
+    def get_option(self):
+        return self.option
+
+    def get_value(self):
+        return self.value
+
+    def get_comment(self):
+        if self.get_option() == "3":
+            return "# Default Gateway"
+        elif self.get_option() == "6":
+            return "# Default DNS"
+        else:
+            return ""
+
+    def __add__(self, o):
+        return self.get_str() + o
+
+    def __str__(self):
+        return self.get_str()
+
+    def get_str(self):
+        res = []
+
+        if self.get_scope() is not None:
+            res.append(str(self.get_scope()))
+
+        res.append(str(self.get_option()))
+        res.append(str(self.get_value()))
+
+        return "dhcp-option=" + \
+                ",".join(res) + \
+                "  " + \
+                str(self.get_comment())
+
+
+class DNSMasq_DHCP_Range:
     def __init__(self, range_min, range_max, netmask, lease_time):
+        scope = None
         self.range_min = range_min
         self.range_max = range_max
         self.netmask = netmask
         self.lease_time = lease_time
 
-class DNSMasq_DHCP_Host:
-    mac_address = None
-    hostname = None
-    ip_address = None
-    lease_time = None
+    def __init__(self, scope, range_min, range_max, netmask, lease_time):
+        self.scope = scope
+        self.range_min = range_min
+        self.range_max = range_max
+        self.netmask = netmask
+        self.lease_time = lease_time
 
+    def get_scope(self):
+        return self.scope
+
+    def get_range_min(self):
+        return self.range_min
+
+    def get_range_max(self):
+        return self.range_max
+
+    def get_netmask(self):
+        return self.netmask
+
+    def get_lease_time(self):
+        return self.lease_time
+
+    def __add__(self, o):
+        return self.get_str() + o
+
+    def __str__(self):
+        return self.get_str()
+
+    def get_str(self):
+        res = []
+
+        if self.get_scope() is not None:
+            res.append(str(self.get_scope()))
+
+        res.append(str(self.get_range_min()))
+        res.append(str(self.get_range_max()))
+        res.append(str(self.get_netmask()))
+        res.append(str(self.get_lease_time()))
+
+        return "dhcp-range=" + \
+                ",".join(res)
+
+
+class DNSMasq_DHCP_Host:
     def __init__(self, mac_address, hostname, ip_address, lease_time):
+        scope = None
         self.mac_address = mac_address
         self.hostname = hostname
         self.ip_address = ip_address
         self.lease_time = lease_time
 
+    def __init__(self, scope, mac_address, hostname, ip_address, lease_time):
+        self.scope = scope
+        self.mac_address = mac_address
+        self.hostname = hostname
+        self.ip_address = ip_address
+        self.lease_time = lease_time
+
+    def get_scope(self):
+        return self.scope
+
+    def get_mac_address(self):
+        return self.mac_address
+
+    def get_hostname(self):
+        return self.hostname
+
+    def get_ip_address(self):
+        return self.ip_address
+
+    def get_lease_time(self):
+        return self.lease_time
+
+    def __add__(self, o):
+        return self.get_str() + o
+
+    def __str__(self):
+        return self.get_str()
+
+    def get_str(self):
+        res = []
+
+        if self.get_scope() is not None:
+            res.append(str(self.get_scope()))
+
+        res.append(str(self.get_mac_address()))
+        res.append(str(self.get_hostname()))
+        res.append(str(self.get_ip_address()))
+        res.append(str(self.get_lease_time()))
+
+        return "dhcp-host=" + \
+                ",".join(res)
+
 
 class DNSMasq_DHCP_Section:
-    site = None
-    role = None
-    vlan_id = None
-    vlan_name = None
-    vrf_name = None
-    prefix = None
+    def __init__(self):
+        self.site = None
+        self.role = None
+        self.vlan_id = None
+        self.vlan_name = None
+        self.vrf_name = None
+        self.prefix = None
 
-    dhcp_options = []
-    dhcp_ranges = []
-    dhcp_hosts = []
+        self.dhcp_options = []
+        self.dhcp_ranges = []
+        self.dhcp_hosts = []
 
     def set_site(self, site):
         self.site = site
@@ -166,41 +282,43 @@ class DNSMasq_DHCP_Config:
         for i in self.dhcp_config_generic_switches:
             print(i)
 
-    def out(self):
+    def print(self):
+        print(self)
+
+    def __str__(self):
+        res = []
+
         for sw in self.dhcp_config_generic_switches:
-            print(sw)
+            res.append(str(sw))
 
         for sec in self.dhcp_config_sections:
-            print(sec.get_header())
+            res.append(str(""))
+            res.append(str(""))
+            res.append(str(sec.get_header()))
 
+            res.append(str(""))
             for opts in sec.get_options():
-                print(opts.option, opts.value)
+                res.append(str(opts))
 
+            res.append(str(""))
             for ran in sec.get_ranges():
-                print(ran.range_min, ran.range_max, ran.netmask, ran.lease_time)
+                res.append(str(ran))
+
+            res.append(str(""))
             for host in sec.get_hosts():
-                print(host.mac_address, host.hostname, host.ip_address, host.lease_time)
+                res.append(str(host))
+
+        return "\n".join(res)
 
 
 # Fetch headers
-def netbox_to_dnsmasq_dhcp_config_get_header_info(ctx, dnsmasq_dhcp_config):
-
-    # Generic settings
-    # TODO
-    netboxers_helpers.write_to_ddo_fh(ctx, "dhcp-leasefile=" + ctx['dhcp_lease_file'])
-
+def netbox_to_dnsmasq_dhcp_config_put_generic_switches(ctx, dnsmasq_dhcp_config):
     dnsmasq_dhcp_config.append_to_dhcp_config_generic_switches(
         DNSMasq_DHCP_Generic_Switchable("dhcp-leasefile", ctx['dhcp_lease_file']))
 
-
     if ctx['dhcp_authoritive']:
-        # TODO
-        netboxers_helpers.write_to_ddo_fh(ctx, "dhcp-authoritative")
         dnsmasq_dhcp_config.append_to_dhcp_config_generic_switches(
             DNSMasq_DHCP_Generic_Switchable("dhcp-authoritative", None))
-
-    # TODO
-    netboxers_helpers.write_to_ddo_fh(ctx, "domain=" + ctx['dhcp_default_domain'])
 
     dnsmasq_dhcp_config.append_to_dhcp_config_generic_switches(
         DNSMasq_DHCP_Generic_Switchable("domain", ctx['dhcp_default_domain']))
@@ -218,13 +336,8 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
     # DNSMasq DHCP config
     dnsmasq_dhcp_config = DNSMasq_DHCP_Config()
 
-    # Truncate and open file cleanly
-    # TODO
-    netboxers_helpers.write_to_ddo_fh(ctx, None)
-
     # Fetch header info
-    netbox_to_dnsmasq_dhcp_config_get_header_info(ctx, dnsmasq_dhcp_config)
-
+    netbox_to_dnsmasq_dhcp_config_put_generic_switches(ctx, dnsmasq_dhcp_config)
 
     # Get prefixes
     prefixes = netboxers_helpers.query_netbox(ctx, "ipam/prefixes/")
@@ -234,8 +347,6 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
 
     for prefix_obj in prefixes['results']:
         dnsmasq_dhcp_section = DNSMasq_DHCP_Section()
-
-        dnsmasq_dhcp = ""
 
         # Skip non-IPv4
         if prefix_obj['is_pool'] != True:
@@ -254,12 +365,12 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
         if prefix_obj['prefix'] is not None:
             dnsmasq_dhcp_section.set_prefix(prefix_obj['prefix'])
 
-        # Print comment/header
-        # TODO
-        netboxers_helpers.write_to_ddo_fh(ctx, "")
-        netboxers_helpers.write_to_ddo_fh(ctx, "")
-        netboxers_helpers.write_to_ddo_fh(ctx, dnsmasq_dhcp_section.get_header())
-        netboxers_helpers.write_to_ddo_fh(ctx, "")
+#        # Print comment/header
+#        # TODO
+#        netboxers_helpers.write_to_ddo_fh(ctx, "")
+#        netboxers_helpers.write_to_ddo_fh(ctx, "")
+#        netboxers_helpers.write_to_ddo_fh(ctx, dnsmasq_dhcp_section.get_header())
+#        netboxers_helpers.write_to_ddo_fh(ctx, "")
 
         # Get default gateway from the VRF based on a tag
         default_gateway_ip_addr_obj = netboxers_queries.get_net_default_gateway_from_vrf(ctx, prefix_obj['vrf']['id'])
@@ -269,17 +380,11 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
 
             # Write default gateway
             if default_gateway_ip_addr is not None:
-                # TODO
-                netboxers_helpers.write_to_ddo_fh(ctx, "dhcp-option=" + \
-                                     ",".join([netboxers_queries.get_vrf_vlan_name_from_prefix_obj(prefix_obj),
-                                               "3", # Default gateway
-                                               str(default_gateway_ip_addr)
-                                              ]) +
-                                     "  # Default Gateway")
-
                 # Record the default gateway
                 dnsmasq_dhcp_section.append_dhcp_option(
-                        DNSMasq_DHCP_Option("3", default_gateway_ip_addr))
+                        DNSMasq_DHCP_Option(
+                            netboxers_queries.get_vrf_vlan_name_from_prefix_obj(prefix_obj),
+                            "3", default_gateway_ip_addr))
 
 
                 # Get DNS from the default gateway record
@@ -288,43 +393,46 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
 
                 # Write DNS server
                 if default_dnsname_ip_addr is not None:
-                    # TODO
-                    netboxers_helpers.write_to_ddo_fh(ctx, "dhcp-option=" + \
-                                         ",".join([netboxers_queries.get_vrf_vlan_name_from_prefix_obj(prefix_obj),
-                                                   "6", # Default DNS
-                                                   str(default_dnsname_ip_addr)
-                                                  ]) +
-                                         "  # Default DNS")
+                    # Record the default gateway
+                    ## Recording scope, option and value
+                    dnsmasq_dhcp_section.append_dhcp_option(
+                            DNSMasq_DHCP_Option(
+                                netboxers_queries.get_vrf_vlan_name_from_prefix_obj(prefix_obj),
+                                "6", default_dnsname_ip_addr))
 
-                # Record the default gateway
-                dnsmasq_dhcp_section.append_dhcp_option(
-                        DNSMasq_DHCP_Option("6", default_dnsname_ip_addr))
-
+#        # Print TODO
+#        for opts in dnsmasq_dhcp_section.get_options():
+#            # Write to file
+#            netboxers_helpers.write_to_ddo_fh(ctx, opts)
+#
+#            # TODO
+#            print(opts)
+#
+#        netboxers_helpers.write_to_ddo_fh(ctx, "")
+#
 
         # Print dhcp-range
         ip_network = ipaddress.ip_network(prefix_obj['prefix'])
 
-        # TODO
-        netboxers_helpers.write_to_ddo_fh(ctx, "dhcp-range=" + \
-                             ",".join([netboxers_queries.get_vrf_vlan_name_from_prefix_obj(prefix_obj),
-                                     str(ip_network.network_address + \
-                                         ctx['dhcp_host_range_offset_min']),
-                                     str(ip_network.network_address + \
-                                         ctx['dhcp_host_range_offset_max']),
-                                     str(ip_network.netmask),
-                                     ctx['dhcp_default_lease_time_range']
-                                    ]))
-
-                    # TODO
-        netboxers_helpers.write_to_ddo_fh(ctx, "")
-
         # Record the DHCP range
         dnsmasq_dhcp_section.append_dhcp_range(
                 DNSMasq_DHCP_Range(
+                    netboxers_queries.get_vrf_vlan_name_from_prefix_obj(prefix_obj),
                     ip_network.network_address + ctx['dhcp_host_range_offset_min'],
                     ip_network.network_address + ctx['dhcp_host_range_offset_max'],
                     ip_network.netmask,
                     ctx['dhcp_default_lease_time_range']))
+
+#        # Print TODO
+#        for opts in dnsmasq_dhcp_section.get_ranges():
+#            # Write to file
+#            netboxers_helpers.write_to_ddo_fh(ctx, opts)
+#
+#            # TODO
+#            print(opts)
+#
+#        netboxers_helpers.write_to_ddo_fh(ctx, "")
+
 
 
         # Query all IP addresses in the VRF. From each, fetch the associated interface and its MAC
@@ -334,25 +442,42 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
         for tup in dhcp_host_tuples:
             # dhcp-host=eth0,a0:3e:6b:aa:6e:fc,Acer_Wit_Lieke,192.168.1.67,600m
                     # TODO
-            netboxers_helpers.write_to_ddo_fh(ctx, "dhcp-host=" +
-                                 ",".join([netboxers_queries.get_vrf_vlan_name_from_prefix_obj(prefix_obj),
-                                           tup['mac_address'],
-                                           tup['host_iface'],
-                                           tup['ip_addr'],
-                                           ctx['dhcp_default_lease_time_host']
-                                          ]))
+#            netboxers_helpers.write_to_ddo_fh(ctx, "dhcp-host=" +
+#                                 ",".join([netboxers_queries.get_vrf_vlan_name_from_prefix_obj(prefix_obj),
+#                                           tup['mac_address'],
+#                                           tup['host_iface'],
+#                                           tup['ip_addr'],
+#                                           ctx['dhcp_default_lease_time_host']
+#                                          ]))
 
             # Record the DHCP host
             dnsmasq_dhcp_section.append_dhcp_host(
                     DNSMasq_DHCP_Host(
+                        netboxers_queries.get_vrf_vlan_name_from_prefix_obj(prefix_obj),
                         tup['mac_address'], tup['host_iface'],
                         tup['ip_addr'], ctx['dhcp_default_lease_time_host']))
+
+#        # Print TODO
+#        for opts in dnsmasq_dhcp_section.get_hosts():
+#            # Write to file
+#            netboxers_helpers.write_to_ddo_fh(ctx, opts)
+#
+#            # TODO
+#            print(opts)
+#
 
         # Record section to config
         dnsmasq_dhcp_config.append_to_dhcp_config_sections(dnsmasq_dhcp_section)
 
     # Debug print
-    dnsmasq_dhcp_config.out()
+    print("==================")
+    dnsmasq_dhcp_config.print()
+
+    ## Output DNSMasq Config to file
+
+    # Truncate and open file cleanly
+    netboxers_helpers.write_to_ddo_fh(ctx, None)
+    netboxers_helpers.write_to_ddo_fh(ctx, str(dnsmasq_dhcp_config))
 
     sys.exit(1)
 
