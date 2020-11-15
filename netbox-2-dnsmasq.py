@@ -23,6 +23,7 @@ from netboxers import netboxers_cli
 from netboxers import netboxers_helpers
 from netboxers import netboxers_queries
 from netboxers.models.dnsmasq_dhcp import *
+from netboxers.models.dns_zonefile import *
 
 
 
@@ -142,27 +143,26 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
 
 
 def powerdns_recursor_zonefile(ctx):
-    zone = dns.zone.Zone(ctx['dhcp_default_domain'], relativize=False)
+    zo = DNS_Zonefile()
 
-    rr_obj = {}
-    rr_obj['type']    = 'SOA'
-    rr_obj['name']    = netboxers_helpers.dns_canonicalize(ctx['dhcp_default_domain'])
-    rr_obj['mname']   = netboxers_helpers.dns_canonicalize('ns.' + ctx['dhcp_default_domain'])
-    rr_obj['rname']   = 'hostmaster.' + ctx['dhcp_default_domain']
-    rr_obj['serial']  = 7
-    rr_obj['refresh'] = 86400
-    rr_obj['retry']   = 7200
-    rr_obj['expire']  = 3600000
-    rr_obj['minimum'] = 1800
+    rr = DNS_Resource_Record(
+            rr_type = 'SOA',
+            rr_name = netboxers_helpers.dns_canonicalize(ctx['dhcp_default_domain']),
+            soa_mname = netboxers_helpers.dns_canonicalize('ns.' + ctx['dhcp_default_domain']),
+            soa_rname = 'hostmaster.' + ctx['dhcp_default_domain'],
+            soa_serial = 7,
+            soa_refresh = 86400,
+            soa_retry = 7200,
+            soa_expire = 3600000,
+            soa_minimum_ttl = 1800)
+    zo.add_rr(rr)
 
-    netboxers_helpers.add_rr_to_zone(ctx, zone, rr_obj)
 
-    rr_obj = {}
-    rr_obj['type'] = 'NS'
-    rr_obj['name'] = '@'
-    rr_obj['data'] = netboxers_helpers.dns_canonicalize('ns.' + ctx['dhcp_default_domain'])
-
-    netboxers_helpers.add_rr_to_zone(ctx, zone, rr_obj)
+    rr = DNS_Resource_Record(
+            rr_type = 'NS',
+            rr_name = '@',
+            rr_data = netboxers_helpers.dns_canonicalize('ns.' + ctx['dhcp_default_domain']))
+    zo.add_rr(rr)
 
 
     # Query for prefixes and ranges
@@ -174,6 +174,7 @@ def powerdns_recursor_zonefile(ctx):
         if prefix_obj['family']['value'] != 4:
             continue
 
+        # TODO
         # Only focus on Home
         if prefix_obj['site']['slug'] != 'home':
             continue
@@ -186,18 +187,19 @@ def powerdns_recursor_zonefile(ctx):
         for tupple in ip_addrs_in_vrf:
 
             # Add the A record for each interface
-            rr_obj = {}
-            rr_obj['type'] = 'A'
-            rr_obj['name'] = netboxers_helpers.normalize_name(tupple['hostname'] + "_" + \
-                                            tupple['interface_name'])
-            rr_obj['data'] = str(tupple['ip_addr'])
+            rr = DNS_Resource_Record(
+                    rr_type = 'A',
+                    rr_name = netboxers_helpers.normalize_name(tupple['hostname'] + "_" + \
+                                            tupple['interface_name']),
+                    rr_data = str(tupple['ip_addr']))
+            zo.add_rr(rr)
 
-            netboxers_helpers.add_rr_to_zone(ctx, zone, rr_obj)
 
-
+            # Check if a mac_address is available
             if 'mac_address' not in tupple or \
                     tupple['mac_address'] is None or \
                     len(tupple['mac_address']) == 0:
+
                 print("No mac address available for",
                         tupple['hostname'],
                         "interface",
@@ -223,18 +225,17 @@ def powerdns_recursor_zonefile(ctx):
                 # Check: is it equal to the current record?
                 if tupple['ip_addr'] == plain_ip_address:
 
-                    rr_obj['name'] = netboxers_helpers.normalize_name(tupple['hostname'] + "_" + \
-                                                    tupple['interface_name'])
-                    rr_obj = {}
-                    rr_obj['type'] = 'CNAME'
-                    rr_obj['name'] = netboxers_helpers.normalize_name(tupple['hostname'])
-                    rr_obj['data'] = netboxers_helpers.dns_canonicalize(netboxers_helpers.normalize_name(tupple['hostname'] + "_" + \
-                                                                     tupple['interface_name'] + \
-                                                                     "." + \
-                                                                     ctx['dhcp_default_domain'])
-                                                     )
-
-                    netboxers_helpers.add_rr_to_zone(ctx, zone, rr_obj)
+                    # Add CNAME towards primary ip_address holding interface
+                    rr = DNS_Resource_Record(
+                            rr_type = 'CNAME',
+                            rr_name = netboxers_helpers.normalize_name(tupple['hostname']),
+                            rr_data = netboxers_helpers.dns_canonicalize(
+                                            netboxers_helpers.normalize_name(
+                                                tupple['hostname'] + "_" + \
+                                                tupple['interface_name'] + \
+                                                "." + \
+                                                ctx['dhcp_default_domain'])))
+                    zo.add_rr(rr)
 
 
     # Inject footer file
@@ -245,14 +246,15 @@ def powerdns_recursor_zonefile(ctx):
 
     # Write zonefile
     f = open(ctx['zonefile'], 'w')
-    zone.to_file(f, relativize=True)
+
+    # Write the zonefile data to file
+    f.write(str(zo))
 
     # Add footer to zonefile
     if foot is not None:
         f.write(foot)
 
     f.close()
-    return
 
 
 ### WORK IN PROGRESS 192.168.x.x only
