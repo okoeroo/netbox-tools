@@ -45,9 +45,9 @@ class DNS_Resource_Record:
             elif key == 'mx_value':
                 self.mx_data = self.dns_canonicalize(value)
 
+
         # Post processing
         if self.rr_type == 'SOA':
-            # self.rr_name = '@'
             self.rr_name = self.dns_canonicalize(self.rr_name)
             self.rr_data = " ".join([   self.soa_mname,
                                         self.soa_rname,
@@ -59,6 +59,16 @@ class DNS_Resource_Record:
         elif self.rr_type == 'MX':
             self.rr_data = " ".join([   self.mx_priority,
                                         self.mx_data])
+        elif self.rr_type == 'NS':
+            self.rr_data = self.dns_canonicalize(self.rr_data)
+        elif self.rr_type == 'CNAME':
+            self.rr_name = self.normalize_name(self.rr_name)
+            self.rr_data = self.normalize_name(self.rr_data)
+            self.rr_data = self.dns_canonicalize(self.rr_data)
+        elif self.rr_type == 'A':
+            self.rr_name = self.normalize_name(self.rr_name)
+            self.rr_data = str(self.rr_data)
+
 
         # Sanity checks
         if self.rr_name is None:
@@ -80,6 +90,13 @@ class DNS_Resource_Record:
             return s + '.'
         else:
             return s
+
+    def normalize_name(self, name):
+        return name.lower().replace(" ",
+                                    "_").replace("-",
+                                                 "_").replace("\"",
+                                                              "").replace("\'",
+                                                                          "")
 
     def __str__(self):
         res = []

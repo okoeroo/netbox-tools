@@ -147,8 +147,8 @@ def powerdns_recursor_zonefile(ctx):
 
     rr = DNS_Resource_Record(
             rr_type = 'SOA',
-            rr_name = netboxers_helpers.dns_canonicalize(ctx['dhcp_default_domain']),
-            soa_mname = netboxers_helpers.dns_canonicalize('ns.' + ctx['dhcp_default_domain']),
+            rr_name = ctx['dhcp_default_domain'],
+            soa_mname = 'ns.' + ctx['dhcp_default_domain'],
             soa_rname = 'hostmaster.' + ctx['dhcp_default_domain'],
             soa_serial = 7,
             soa_refresh = 86400,
@@ -161,7 +161,7 @@ def powerdns_recursor_zonefile(ctx):
     rr = DNS_Resource_Record(
             rr_type = 'NS',
             rr_name = '@',
-            rr_data = netboxers_helpers.dns_canonicalize('ns.' + ctx['dhcp_default_domain']))
+            rr_data = 'ns.' + ctx['dhcp_default_domain'])
     zo.add_rr(rr)
 
 
@@ -189,9 +189,8 @@ def powerdns_recursor_zonefile(ctx):
             # Add the A record for each interface
             rr = DNS_Resource_Record(
                     rr_type = 'A',
-                    rr_name = netboxers_helpers.normalize_name(tupple['hostname'] + "_" + \
-                                            tupple['interface_name']),
-                    rr_data = str(tupple['ip_addr']))
+                    rr_name = tupple['hostname'] + "_" + tupple['interface_name'],
+                    rr_data = tupple['ip_addr'])
             zo.add_rr(rr)
 
 
@@ -228,13 +227,11 @@ def powerdns_recursor_zonefile(ctx):
                     # Add CNAME towards primary ip_address holding interface
                     rr = DNS_Resource_Record(
                             rr_type = 'CNAME',
-                            rr_name = netboxers_helpers.normalize_name(tupple['hostname']),
-                            rr_data = netboxers_helpers.dns_canonicalize(
-                                            netboxers_helpers.normalize_name(
-                                                tupple['hostname'] + "_" + \
-                                                tupple['interface_name'] + \
-                                                "." + \
-                                                ctx['dhcp_default_domain'])))
+                            rr_name = tupple['hostname'],
+                            rr_data = tupple['hostname'] + "_" + \
+                                          tupple['interface_name'] + \
+                                          "." + \
+                                          ctx['dhcp_default_domain'])
                     zo.add_rr(rr)
 
 
@@ -259,6 +256,8 @@ def powerdns_recursor_zonefile(ctx):
 
 ### WORK IN PROGRESS 192.168.x.x only
 def powerdns_recursor_zoneing_reverse_lookups(ctx):
+    zo = DNS_Zonefile()
+
     print(ctx['zonefile_in_addr'])
     ### ctx['zonefile_in_addr']
 
