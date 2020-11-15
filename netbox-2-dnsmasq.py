@@ -365,12 +365,6 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
         if prefix_obj['prefix'] is not None:
             dnsmasq_dhcp_section.set_prefix(prefix_obj['prefix'])
 
-#        # Print comment/header
-#        # TODO
-#        netboxers_helpers.write_to_ddo_fh(ctx, "")
-#        netboxers_helpers.write_to_ddo_fh(ctx, "")
-#        netboxers_helpers.write_to_ddo_fh(ctx, dnsmasq_dhcp_section.get_header())
-#        netboxers_helpers.write_to_ddo_fh(ctx, "")
 
         # Get default gateway from the VRF based on a tag
         default_gateway_ip_addr_obj = netboxers_queries.get_net_default_gateway_from_vrf(ctx, prefix_obj['vrf']['id'])
@@ -400,16 +394,6 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
                                 netboxers_queries.get_vrf_vlan_name_from_prefix_obj(prefix_obj),
                                 "6", default_dnsname_ip_addr))
 
-#        # Print TODO
-#        for opts in dnsmasq_dhcp_section.get_options():
-#            # Write to file
-#            netboxers_helpers.write_to_ddo_fh(ctx, opts)
-#
-#            # TODO
-#            print(opts)
-#
-#        netboxers_helpers.write_to_ddo_fh(ctx, "")
-#
 
         # Print dhcp-range
         ip_network = ipaddress.ip_network(prefix_obj['prefix'])
@@ -423,33 +407,12 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
                     ip_network.netmask,
                     ctx['dhcp_default_lease_time_range']))
 
-#        # Print TODO
-#        for opts in dnsmasq_dhcp_section.get_ranges():
-#            # Write to file
-#            netboxers_helpers.write_to_ddo_fh(ctx, opts)
-#
-#            # TODO
-#            print(opts)
-#
-#        netboxers_helpers.write_to_ddo_fh(ctx, "")
-
-
 
         # Query all IP addresses in the VRF. From each, fetch the associated interface and its MAC
         # Extract all IP addresses in the VRF
         dhcp_host_tuples = netboxers_queries.get_dhcp_host_dict_from_vrf(ctx, prefix_obj['vrf']['id'])
 
         for tup in dhcp_host_tuples:
-            # dhcp-host=eth0,a0:3e:6b:aa:6e:fc,Acer_Wit_Lieke,192.168.1.67,600m
-                    # TODO
-#            netboxers_helpers.write_to_ddo_fh(ctx, "dhcp-host=" +
-#                                 ",".join([netboxers_queries.get_vrf_vlan_name_from_prefix_obj(prefix_obj),
-#                                           tup['mac_address'],
-#                                           tup['host_iface'],
-#                                           tup['ip_addr'],
-#                                           ctx['dhcp_default_lease_time_host']
-#                                          ]))
-
             # Record the DHCP host
             dnsmasq_dhcp_section.append_dhcp_host(
                     DNSMasq_DHCP_Host(
@@ -457,29 +420,15 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
                         tup['mac_address'], tup['host_iface'],
                         tup['ip_addr'], ctx['dhcp_default_lease_time_host']))
 
-#        # Print TODO
-#        for opts in dnsmasq_dhcp_section.get_hosts():
-#            # Write to file
-#            netboxers_helpers.write_to_ddo_fh(ctx, opts)
-#
-#            # TODO
-#            print(opts)
-#
-
         # Record section to config
         dnsmasq_dhcp_config.append_to_dhcp_config_sections(dnsmasq_dhcp_section)
 
-    # Debug print
-    print("==================")
-    dnsmasq_dhcp_config.print()
-
-    ## Output DNSMasq Config to file
 
     # Truncate and open file cleanly
     netboxers_helpers.write_to_ddo_fh(ctx, None)
-    netboxers_helpers.write_to_ddo_fh(ctx, str(dnsmasq_dhcp_config))
 
-    sys.exit(1)
+    ## Output DNSMasq Config to file
+    netboxers_helpers.write_to_ddo_fh(ctx, str(dnsmasq_dhcp_config))
 
 
 def powerdns_recursor_zonefile(ctx):
