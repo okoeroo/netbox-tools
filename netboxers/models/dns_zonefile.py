@@ -6,28 +6,28 @@ class DNS_Resource_Record:
         self.rr_name = None
         self.rr_type = None
         self.rr_class = 'IN'
-        self.rr_ttl = 3600
+        self.rr_ttl = 86400
         self.rr_data = None
 
         for key, value in kwargs.items():
             # Generic
             if key == 'rr_name':
-                self.rr_name = value
+                self.rr_name = value.lower()
             elif key == 'rr_type':
                 self.rr_type = value.upper()
             elif key == 'rr_class':
-                self.rr_class = value
+                self.rr_class = value.upper()
             elif key == 'rr_ttl':
                 self.rr_ttl = value
             elif key == 'rr_data':
-                self.rr_data = value
+                self.rr_data = value.lower()
 
             # SOA
             elif key == 'soa_mname':
-                self.soa_mname = self.dns_canonicalize(value)
+                self.soa_mname = self.dns_canonicalize(value).lower()
             elif key == 'soa_rname':
                 # Funky e-mail: foo\.bar.example.org
-                self.soa_rname = self.dns_canonicalize(value)
+                self.soa_rname = self.dns_canonicalize(value).lower()
             elif key == 'soa_serial':
                 self.soa_serial = value
             elif key == 'soa_refresh':
@@ -43,7 +43,7 @@ class DNS_Resource_Record:
             elif key == 'mx_priority':
                 self.mx_priority = value
             elif key == 'mx_value':
-                self.mx_data = self.dns_canonicalize(value)
+                self.mx_data = self.dns_canonicalize(value).lower()
 
 
         # Post processing
@@ -68,6 +68,10 @@ class DNS_Resource_Record:
         elif self.rr_type == 'A':
             self.rr_name = self.normalize_name(self.rr_name)
             self.rr_data = str(self.rr_data)
+        elif self.rr_type == 'PTR':
+            self.rr_name = self.dns_canonicalize(self.rr_name)
+            self.rr_data = self.normalize_name(self.rr_data)
+            self.rr_data = self.dns_canonicalize(self.rr_data)
 
 
         # Sanity checks

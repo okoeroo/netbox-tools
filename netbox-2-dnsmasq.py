@@ -246,6 +246,7 @@ def powerdns_recursor_zonefile(ctx):
 
     # Write the zonefile data to file
     f.write(str(zo))
+    f.write("\n")
 
     # Add footer to zonefile
     if foot is not None:
@@ -263,27 +264,25 @@ def powerdns_recursor_zoneing_reverse_lookups(ctx):
 
     #ipam/ip-addresses/
     zone_name = "168.192.in-addr.arpa"
-    zone = dns.zone.Zone(netboxers_helpers.dns_canonicalize(zone_name), relativize=False)
 
-    rr_obj = {}
-    rr_obj['type']    = 'SOA'
-    rr_obj['name']    = netboxers_helpers.dns_canonicalize(zone_name)
-    rr_obj['mname']   = netboxers_helpers.dns_canonicalize("ns." + ctx['dhcp_default_domain'])
-    rr_obj['rname']   = netboxers_helpers.dns_canonicalize('hostmaster.' + ctx['dhcp_default_domain'])
-    rr_obj['serial']  = 7
-    rr_obj['refresh'] = 86400
-    rr_obj['retry']   = 7200
-    rr_obj['expire']  = 3600000
-    rr_obj['minimum'] = 1800
+    rr = DNS_Resource_Record(
+            rr_type = 'SOA',
+            rr_name = zone_name,
+            soa_mname = 'ns.' + ctx['dhcp_default_domain'],
+            soa_rname = 'hostmaster.' + ctx['dhcp_default_domain'],
+            soa_serial = 7,
+            soa_refresh = 86400,
+            soa_retry = 7200,
+            soa_expire = 3600000,
+            soa_minimum_ttl = 1800)
+    zo.add_rr(rr)
 
-    netboxers_helpers.add_rr_to_zone(ctx, zone, rr_obj)
 
-    rr_obj = {}
-    rr_obj['type'] = 'NS'
-    rr_obj['name'] = '@'
-    rr_obj['data'] = netboxers_helpers.dns_canonicalize('ns.' + ctx['dhcp_default_domain'])
-
-    netboxers_helpers.add_rr_to_zone(ctx, zone, rr_obj)
+    rr = DNS_Resource_Record(
+            rr_type = 'NS',
+            rr_name = '@',
+            rr_data = 'ns.' + ctx['dhcp_default_domain'])
+    zo.add_rr(rr)
 
 
     # Query for prefixes and ranges
@@ -320,31 +319,24 @@ def powerdns_recursor_zoneing_reverse_lookups(ctx):
         ip_addr_interface = ipaddress.IPv4Interface(tupple['ip_addr'])
         tupple['rev_ip_addr'] = ipaddress.ip_address(ip_addr_interface.ip).reverse_pointer
 
-        # Debug
-        #netboxers_helpers.pp(tupple)
 
-        # Add the PTR record for each interface
-        # 131.28.12.202.in-addr.arpa. IN PTR svc00.apnic.net.
-        rr_obj = {}
-        rr_obj['type'] = 'PTR'
-
-        # Strip the zone from the name
-        lesser = 0 - len(zone_name) - 1
-        rr_obj['name'] = tupple['rev_ip_addr'][:lesser]
-        rr_obj['data'] = netboxers_helpers.dns_canonicalize(netboxers_helpers.normalize_name(tupple['host_name'] + "_" + \
-                                                         tupple['interface_name'] + "." + \
-                                                         ctx['dhcp_default_domain']))
-
-        netboxers_helpers.add_rr_to_zone(ctx, zone, rr_obj)
+        rr = DNS_Resource_Record(
+                rr_type = 'PTR',
+                rr_name = tupple['rev_ip_addr'],
+                rr_data = tupple['host_name'] + "_" + \
+                             tupple['interface_name'] + "." + \
+                             ctx['dhcp_default_domain'])
+        zo.add_rr(rr)
 
 
     # Write zonefile
     f = open(ctx['zonefile_in_addr'], 'w')
-    zone.to_file(f, relativize=False)
+
+    # Write the zonefile data to file
+    f.write(str(zo))
+    f.write("\n")
 
     f.close()
-    return
-
 
 
 ### Main
