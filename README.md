@@ -1,4 +1,4 @@
-# netbox-2-dnsmasq.py
+# netbox-2-dhcp-dns.py
 
 Using Netbox as source and creating DNSMasq DHCP configuration file.
 Also, a PowerDNS Recursor compatible zonefile can be generated.
@@ -137,7 +137,7 @@ cloud                           CNAME   owncloud.koeroo.local.
 
 ## Usage
 ```
-usage: netbox-2-dnsmasq.py [-h] [-v] [-k AUTHKEY]
+usage: netbox-2-dhcp-dns.py [-h] [-v] [-k AUTHKEY]
                            [-do DNSMASQ_DHCP_OUTPUT_FILE]
                            [-bu NETBOX_BASE_URL]
                            [-ltr DHCP_DEFAULT_LEASE_TIME_RANGE]
@@ -186,9 +186,9 @@ optional arguments:
 
 ## Example script to mash it all up
 ```
-echo "Running netbox-2-dnsmasq.py"
+echo "Running netbox-2-dhcp-dns.py"
 
-~/netbox-tools/netbox-2-dnsmasq.py \
+~/netbox-tools/netbox-2-dhcp-dns.py \
     --authkey <heregoesyourkey> \
     --base-url http://netbox.koeroo.local \
     --dnsmasq-dhcp-output-file /tmp/generated-dhcp.conf \
