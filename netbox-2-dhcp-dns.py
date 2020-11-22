@@ -47,6 +47,12 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
         if prefix_obj['is_pool'] != True:
             continue
 
+        # Only Active Prefixes
+        if prefix_obj['status']['value'] != 'active':
+            print("Prefix {} not active, skipping.".format(prefix_obj['prefix']))
+            continue
+
+
         # Record the DNSMasq_DHCP_Section info
         if prefix_obj['site'] is not None:
             dnsmasq_dhcp_section.set_site(prefix_obj['site']['name'])
@@ -108,6 +114,15 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
         dhcp_host_tuples = netboxers_queries.get_dhcp_host_dict_from_vrf(ctx, prefix_obj['vrf']['id'])
 
         for tup in dhcp_host_tuples:
+            # TODO
+            # When Device is set to Offline, skip it
+            if tup['ip_addr_obj']['status']['value'] == 'offline':
+                print("Device {} with MAC {} and IP address {} is Offline, skipping".format(
+                                    tup['host_iface'],
+                                    tup['mac_address'],
+                                    tup['ip_addr']))
+                continue
+
             # Record the DHCP host
             dnsmasq_dhcp_section.append_dhcp_host(
                     DNSMasq_DHCP_Host(
@@ -169,6 +184,15 @@ def powerdns_recursor_zonefile(ctx):
 
         # Run through the tupples
         for tupple in ip_addrs_in_vrf:
+
+            # TODO
+            # When Device is set to Offline, skip it
+            if tupple['ip_addr_obj']['status']['value'] == 'offline':
+                print("Device {} with MAC {} and IP address {} is Offline, skipping".format(
+                                    tupple['host_iface'],
+                                    tupple['mac_address'],
+                                    tupple['ip_addr']))
+                continue
 
             # Add the A record for each interface
             rr = DNS_Resource_Record(

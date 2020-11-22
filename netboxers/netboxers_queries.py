@@ -126,9 +126,11 @@ def assemble_dhcp_host_dict_from_ip_addr_obj(ctx, ip_addr_obj):
 
     res_tup['interface_name'] = get_interface_name_from_ipaddresses_obj(ip_addr_obj)
     res_tup['host_iface'] = res_tup['normalized_hostname'] + "_" + res_tup['interface_name']
+    res_tup['host_iface'] = res_tup['normalized_hostname'] + "_" + res_tup['interface_name']
+
+    res_tup['ip_addr_obj'] = ip_addr_obj
 
     return res_tup
-
 
 
 
