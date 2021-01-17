@@ -75,6 +75,11 @@ def argparsing(ctx):
                         help="DHCP Host range offset maximum.",
                         default=199,
                         type=int)
+    parser.add_argument("-dn", "--dhcp-default-ntp-server",
+                        dest='dhcp_default_ntp_server',
+                        help="Default NTP server distribute via DHCP.",
+                        default=None,
+                        type=str)
     parser.add_argument("-lf", "--dhcp-lease-file",
                         dest='dhcp_lease_file',
                         help="DHCP Lease file.",
@@ -108,10 +113,10 @@ def argparsing(ctx):
                         action="store_true",
                         default=True)
 
-    parser.add_argument("-e", "--zoneheader",           dest='zoneheader',
-                                                        help="Zonefile header template.",
-                                                        default=None,
-                                                        type=str)
+#    parser.add_argument("-e", "--zoneheader",           dest='zoneheader',
+#                                                        help="Zonefile header template.",
+#                                                        default=None,
+#                                                        type=str)
     parser.add_argument("-f", "--zonefooter",           dest='zonefooter',
                                                         help="Zonefile footer template.",
                                                         default=None,
@@ -129,10 +134,11 @@ def argparsing(ctx):
     ctx['dhcp_lease_file']                = args.dhcp_lease_file
     ctx['dhcp_authoritive']               = args.dhcp_authoritive
     ctx['dhcp_default_domain']            = args.dhcp_default_domain
+    ctx['dhcp_default_ntp_server']        = args.dhcp_default_ntp_server
     ctx['zonefile']                       = args.zonefile
     ctx['zonefile_in_addr']               = args.zonefile_in_addr
     ctx['zonefile_relativize']            = args.zonefile_relativize
 
-    ctx['zoneheader']         = args.zoneheader
+#    ctx['zoneheader']         = args.zoneheader
     ctx['zonefooter']         = args.zonefooter
     return ctx

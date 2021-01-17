@@ -38,6 +38,8 @@ class DNSMasq_DHCP_Option:
             return "# Default Gateway"
         elif self.get_option() == "6":
             return "# Default DNS"
+        elif self.get_option() == "42":
+            return "# Default NTP"
         else:
             return ""
 

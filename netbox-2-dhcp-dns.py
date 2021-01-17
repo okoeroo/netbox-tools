@@ -95,6 +95,12 @@ def netbox_to_dnsmasq_dhcp_config(ctx):
                                 netboxers_queries.get_vrf_vlan_name_from_prefix_obj(prefix_obj),
                                 "6", default_dnsname_ip_addr))
 
+            # Write default NTP server
+            if 'dhcp_default_ntp_server' in ctx and ctx['dhcp_default_ntp_server'] is not None:
+                dnsmasq_dhcp_section.append_dhcp_option(
+                        DNSMasq_DHCP_Option(
+                            netboxers_queries.get_vrf_vlan_name_from_prefix_obj(prefix_obj),
+                            "42", ctx['dhcp_default_ntp_server']))
 
         # Print dhcp-range
         ip_network = ipaddress.ip_network(prefix_obj['prefix'])
