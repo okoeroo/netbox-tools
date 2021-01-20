@@ -334,12 +334,18 @@ def powerdns_recursor_zoneing_reverse_lookups(ctx):
         tupple['rev_ip_addr'] = ipaddress.ip_address(ip_addr_interface.ip).reverse_pointer
 
 
+        # RFC compliant domain name
+#        rfc_host_name = tupple['host_name'] + "_" + \
+#                            tupple['interface_name'] + "." + \
+#                            ctx['dhcp_default_domain'])
+        rfc_host_name = tupple['interface_name'] + "." + \
+                            tupple['host_name'] + "." + \
+                            ctx['dhcp_default_domain']
+
         rr = DNS_Resource_Record(
                 rr_type = 'PTR',
                 rr_name = tupple['rev_ip_addr'],
-                rr_data = tupple['host_name'] + "_" + \
-                             tupple['interface_name'] + "." + \
-                             ctx['dhcp_default_domain'])
+                rr_data = rfc_host_name)
         zo.add_rr(rr)
 
 
