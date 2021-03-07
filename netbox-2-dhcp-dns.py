@@ -203,7 +203,7 @@ def powerdns_recursor_zonefile(ctx):
             # Add the A record for each interface
             rr = DNS_Resource_Record(
                     rr_type = 'A',
-                    rr_name = tupple['hostname'] + "_" + tupple['interface_name'],
+                    rr_name = tupple['interface_name'] + "." + tupple['hostname'],
                     rr_data = tupple['ip_addr'])
             zo.add_rr(rr)
 
@@ -242,8 +242,7 @@ def powerdns_recursor_zonefile(ctx):
                     rr = DNS_Resource_Record(
                             rr_type = 'CNAME',
                             rr_name = tupple['hostname'],
-                            rr_data = tupple['hostname'] + "_" + \
-                                          tupple['interface_name'] + \
+                            rr_data = tupple['interface_name'] + "." + tupple['hostname'] + \
                                           "." + \
                                           ctx['dhcp_default_domain'])
                     zo.add_rr(rr)
