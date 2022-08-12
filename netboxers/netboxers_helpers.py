@@ -60,7 +60,7 @@ def query_netbox_call(ctx, query, req_parameters=None):
         print(query_stripped)
 
     get_req = requests.get('{}/api/{}'.format(ctx['netbox_base_url'], query_stripped),
-                           timeout=3,
+                           timeout=10,
                            headers=req_headers,
                            params=req_parameters)
     get_req.raise_for_status()

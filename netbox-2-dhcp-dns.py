@@ -348,6 +348,61 @@ def powerdns_recursor_zoneing_reverse_lookups(ctx):
         zo.add_rr(rr)
 
 
+    # Not assigned must get a special PTR record
+    net_vlan66 = ipaddress.ip_network('192.168.1.0/24')
+    for ip_addr_obj in q['results']:
+        tupple = {}
+
+        # Skip non-IPv4
+        if ip_addr_obj['family']['value'] != 4:
+            continue
+
+        ## HACK
+        if not ip_addr_obj['address'].startswith('192.168'):
+            print(ip_addr_obj['address'], "not in 192.168")
+            continue
+
+        # No interface? Skip
+        if 'assigned_object' in ip_addr_obj:
+            print("Interface assigned to", ip_addr_obj['address'])
+            if ip_addr_obj['address'] in net_vlan66.hosts():
+                print("Interface assigned to", ip_addr_obj['address'], "is part of 192.168.1.0/24")
+
+            continue
+
+#    net4 = ipaddress.ip_network('192.168.1.0/24')
+#    for ip_addr_in_net in net4.hosts():
+#
+#        tupple = {}
+#
+#        # No interface? Skip
+#        if 'assigned_object' not in ip_addr_obj:
+#            print("No interface assigned to", ip_addr_obj['address'])
+#            continue
+#
+#        res = next((i for i, item in enumerate(q['results']) if item["address"] == ip_addr_in_net), None)
+#
+#        if res is None:
+#            ip_addr_interface = ipaddress.IPv4Interface(ip_addr_in_net)
+#            rev_ip_addr = ipaddress.ip_address(ip_addr_interface.ip).reverse_pointer
+#            print(rev_ip_addr)
+
+
+#        # Assemble the tupple
+#        rfc_host_name = tupple['interface_name'] + "." + \
+#                            tupple['host_name'] + "." + \
+#                            ctx['dhcp_default_domain']
+#
+#        ip_addr_interface = ipaddress.IPv4Interface(tupple['ip_addr'])
+#        tupple['rev_ip_addr'] = ipaddress.ip_address(ip_addr_interface.ip).reverse_pointer
+#
+#        rr = DNS_Resource_Record(
+#                rr_type = 'PTR',
+#                rr_name = tupple['rev_ip_addr'],
+#                rr_data = rfc_host_name)
+#        zo.add_rr(rr)
+
+
     # Write zonefile
     f = open(ctx['zonefile_in_addr'], 'w')
 
